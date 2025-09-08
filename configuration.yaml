@@ -1,0 +1,13 @@
+# Base parameters
+MODEL_PATH: openbmb/MiniCPM-V-2_6-gguf # String path to GGUF model
+MODEL_ARGS: # Dictionary of arguments to pass for model instantiation
+  filename: ggml-model-Q4_K_M.gguf
+  local_dir: ./models
+  n_gpu_layers: -1
+  n_ctx: 2048
+# Vision parameters
+VISION_HANDLER_TYPE: MiniCPMv26ChatHandler # String representing class of ChatHandler
+VISION_HANDLER_PATH: openbmb/MiniCPM-V-2_6-gguf # String path to GGUF CLIP-like model
+VISION_ARGS:
+  local_dir: ./models
+  filename: mmproj-model-f16.gguf
