@@ -6,8 +6,9 @@ A prototype application enabling users to issue voice or text commands to create
 ## Application Set-up
 
     cp .env.template .env
-    . install-cuda.sh
-    . install-docker.sh
+    . scripts/install-cuda.sh
+    . scripts/install-docker.sh
+    . scripts/download-llamacpp-gguf.sh
     docker compose build
     docker compose up -d
 
