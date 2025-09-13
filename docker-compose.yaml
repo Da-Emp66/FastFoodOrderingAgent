@@ -1,6 +1,6 @@
 include:
   - ./ui/docker-compose.yaml
-#   - ./python/fastfoodordering/docker-compose.yaml
+  # - ./python/fastfoodordering/docker-compose.yaml
 
 services:
   llama-cpp-server:
