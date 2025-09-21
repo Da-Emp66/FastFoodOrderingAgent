@@ -13,10 +13,11 @@ services:
       - ./models:/models
     ports:
       - 8000:8080
-    # GPU configuration - uncomment when GPU is working
+    # GPU configuration - commenting out until issue is resolved
     # runtime: nvidia
     # environment:
     #   - NVIDIA_VISIBLE_DEVICES=all
+    #   - NVIDIA_DRIVER_CAPABILITIES=all
   
   dozzle:
     container_name: dozzle
