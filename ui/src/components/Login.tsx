@@ -1,23 +1,35 @@
 import React, { useState } from 'react';
 import './Login.css';
+import { PageState } from '../pages/Home';
+import type { PageStateType } from '../pages/Home';
 
-const Login: React.FC = () => {
+interface LoginProps {
+  setPageState: (state: PageStateType) => void;
+}
+
+const Login: React.FC<LoginProps> = ({ setPageState }) => {
   const [email, setEmail] = useState('');
 
   const handleContinue = (e: React.FormEvent) => {
     e.preventDefault();
     // Handle email continue logic here
     console.log('Continue with email:', email);
+    // Change to chatbot page after successful login
+    setPageState(PageState.CHATBOT);
   };
 
   const handleGoogleLogin = () => {
     // Handle Google login logic here
     console.log('Continue with Google');
+    // Change to chatbot page after successful login
+    setPageState(PageState.CHATBOT);
   };
 
   const handleAppleLogin = () => {
     // Handle Apple login logic here
     console.log('Continue with Apple');
+    // Change to chatbot page after successful login
+    setPageState(PageState.CHATBOT);
   };
 
   return (
