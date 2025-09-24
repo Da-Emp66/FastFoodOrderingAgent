@@ -1,14 +1,13 @@
-const Home = () => {
 
+import React from "react"
+import Login from "../components/Login"
+
+const Home: React.FC = () => {
     return (
         <div>
-            <h1>Welcome to the Fast Food Ordering Agent</h1>
-            <p>This is a simple React component.</p>
+            <Login />
         </div>
     )
-
-
 }
 
-Home.displayName = 'Home'
 export default Home
