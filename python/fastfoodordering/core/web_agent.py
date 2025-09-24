@@ -7,17 +7,23 @@ import cv2
 import dspy
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+import numpy as np
 from openai import OpenAI
 
 os.environ["MODEL_SERVER"] = "http://localhost:8000"
-    
-class ToolSignature(dspy.Signature):
-    """Signature for manual tool handling."""
-    question: str = dspy.InputField()
-    tools: list[dspy.Tool] = dspy.InputField()
-    outputs: dspy.ToolCalls = dspy.OutputField()
-    answer: str = dspy.OutputField()
 
+blank_image = np.zeros((256, 256, 3), dtype=np.uint8)
+blank_image_path = os.path.join(os.path.dirname(__file__), "blank.jpg")
+cv2.imwrite(blank_image_path, blank_image)
+
+class WebToolSignature(dspy.Signature):
+    """Signature for manual tool handling."""
+    image: dspy.Image = dspy.InputField(desc="Image of what the browser currently looks like based on any previous interactions. Blank if no previous interactions")
+    task: str = dspy.InputField(desc="Task to perform or target to achieve using any available tools")
+    tools: list[dspy.Tool] = dspy.InputField(desc="Tools available to call")
+    history: dspy.History = dspy.InputField(desc="Previous tool calls and reasoning")
+    outputs: dspy.ToolCalls = dspy.OutputField(desc="Tools to call")
+    next_task: str = dspy.OutputField(desc="Text-based output describing the next action to perform, or, if complete, saying the task is complete.")
     
 class BrowserAgent:
     def __init__(self):
@@ -30,7 +36,7 @@ class BrowserAgent:
             api_key="sk-1234",
             model_type="chat",
         )
-        dspy.configure(lm=self.lm)
+        dspy.settings.configure(lm=self.lm)
         self.server_params = StdioServerParameters(
             command="npx",
             args=[
@@ -40,6 +46,8 @@ class BrowserAgent:
             ],
             env=None,
         )
+        self.most_recent_screenshot = None
+        self.history = dspy.History(messages=[])
     
     def __call__(self, prompt: str):
         return asyncio.run(self.process_request(prompt))
@@ -51,23 +59,30 @@ class BrowserAgent:
                 tools = await session.list_tools()
                 self.tools = [dspy.Tool.from_mcp_tool(session, tool) for tool in tools.tools]
                 screenshot_tool = next(filter(lambda tool: tool.name == "browser_take_screenshot", self.tools), None)
-                self.agent = dspy.Predict(ToolSignature)
+                self.agent = dspy.Predict(WebToolSignature)
                 stream_predict = dspy.streamify(
                     self.agent,
                     stream_listeners=[
-                        dspy.streaming.StreamListener(signature_field_name="answer"),
+                        dspy.streaming.StreamListener(signature_field_name="next_task"),
                     ],
                 )
-                output_stream = stream_predict(question=prompt, tools=self.tools)
+                output_stream = stream_predict(
+                    image=dspy.Image.from_file(blank_image_path) \
+                        if self.most_recent_screenshot is None \
+                            else dspy.Image.from_file(self.most_recent_screenshot),
+                    task=prompt,
+                    tools=self.tools,
+                    history=self.history,
+                )
 
                 async for chunk in output_stream:
                     if isinstance(chunk, dspy.streaming.StreamResponse):
                         print(chunk.chunk, end="", flush=True)
                     elif isinstance(chunk, dspy.Prediction):
-                        print(chunk.answer)
+                        print(chunk.next_task)
                         response = chunk
 
-                await show_browser(screenshot_tool)
+                self.screenshot_image_file = await show_browser(screenshot_tool)
                 # # Execute the tool calls
                 for call in response.outputs.tool_calls:
                     tool_to_be_called = next(chain(filter(lambda tool: tool.name == call.name, self.tools), self.tools, [None]))
@@ -75,16 +90,18 @@ class BrowserAgent:
                     print(f"Tool: {call.name}")
                     print(f"Args: {call.args}")
                     print(f"Result: {result}")
-                    await show_browser(screenshot_tool)
+                    self.most_recent_screenshot = await show_browser(screenshot_tool)
 
                 return response
 
 async def show_browser(screenshot_tool: dspy.Tool):
     screenshot_text = await screenshot_tool.acall() # fullPage=True
     screenshot_file = next(chain(re.findall(r"((?:/[^\s\/]+)+(?:\.(?:\w+)))", screenshot_text), [None]))
-    cv2.imshow('Browser Watcher', cv2.imread(screenshot_file))
+    image = cv2.imread(screenshot_file)
+    cv2.imshow('Browser Watcher', image)
     cv2.waitKey(1)
     time.sleep(0.2)
+    return screenshot_file
 
 if __name__ == "__main__":
     browser_search_agent = BrowserAgent()
