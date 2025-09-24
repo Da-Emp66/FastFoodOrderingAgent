@@ -80,7 +80,6 @@ class BrowserAgent:
                 return response
 
 async def show_browser(screenshot_tool: dspy.Tool):
-    print(screenshot_tool)
     screenshot_text = await screenshot_tool.acall() # fullPage=True
     screenshot_file = next(chain(re.findall(r"((?:/[^\s\/]+)+(?:\.(?:\w+)))", screenshot_text), [None]))
     cv2.imshow('Browser Watcher', cv2.imread(screenshot_file))
@@ -90,12 +89,17 @@ async def show_browser(screenshot_tool: dspy.Tool):
 if __name__ == "__main__":
     browser_search_agent = BrowserAgent()
 
+    # print(browser_search_agent(
+    #     "Go to McDonald's website (https://www.mcdonalds.com/) and add a burger to the order. DO NOT ORDER THE BURGER. Simply put it in the cart and DO NOT GO TO CHECKOUT." \
+    #     "Return to me the full name of the burger you added to the order."
+    # ))
+
+    
     print(browser_search_agent(
-        "Go to McDonald's website and add a burger to the order. DO NOT ORDER THE BURGER. Simply put it in the cart and DO NOT GO TO CHECKOUT." \
-        "Return to me the full name of the burger you added to the order."
+        "Go to McDonald's website (https://www.mcdonalds.com/) and scroll all the way down"
     ))
 
     # print(browser_search_agent("Tell me a long story"))
     
-    # output = browser_search_agent("Navigate to McDonald's website")
+    # output = browser_search_agent("Navigate to McDonald's website (https://www.mcdonalds.com/)")
     # print(output)
