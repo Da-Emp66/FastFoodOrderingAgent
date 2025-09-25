@@ -29,13 +29,16 @@ class WebToolSelectionSignature(dspy.Signature):
     tool you are calling matches exactly your current 'task'.
     """
     overall_goal: str = dspy.InputField(desc="The over-arching complex task that the task is part of.")
-    previous_browser_screenshot: dspy.Image = dspy.InputField(
-        desc="Image of what the browser looked like last time, before the last interaction." \
-        "(This can help tell you if the last call succeeded or not.) Blank if no previous interactions"
-    )
-    current_browser_screenshot: dspy.Image = dspy.InputField(
-        desc="Image of what the browser currently looks like based on any previous interactions." \
-        "Blank if no previous interactions"
+    # previous_browser_screenshot: dspy.Image = dspy.InputField(
+    #     desc="Image of what the browser looked like last time, before the last interaction." \
+    #     "(This can help tell you if the last call succeeded or not.) Blank if no previous interactions"
+    # )
+    # current_browser_screenshot: dspy.Image = dspy.InputField(
+    #     desc="Image of what the browser currently looks like based on any previous interactions." \
+    #     "Blank if no previous interactions"
+    # )
+    current_browser_snapshot: str = dspy.InputField(
+        desc="Snapshot containing refs to buttons and interactable divs in the current browser page"
     )
     task: str = dspy.InputField(
         desc="Current task to perform or target to achieve using any available tools."
@@ -51,11 +54,11 @@ class WebToolOutputEvaluatorSignature(dspy.Signature):
     previously completed steps and tool calls, and current browser state."""
 
     overall_goal: str = dspy.InputField(desc="The over-arching complex task to complete.")
-    # previous_browser_screenshot: dspy.Image = dspy.InputField(
-    #     desc="Image of what the browser looked like last time, before the last interaction." \
-    #     "(This, along with 'current_browser_screenshot' can help tell you if the last call" \
-    #     "succeeded or not.) Blank if no previous interactions"
-    # )
+    previous_browser_screenshot: dspy.Image = dspy.InputField(
+        desc="Image of what the browser looked like last time, before the last interaction." \
+        "(This, along with 'current_browser_screenshot' can help tell you if the last call" \
+        "succeeded or not.) Blank if no previous interactions"
+    )
     previous_subtask: str = dspy.InputField(
         desc="The subtask that was either completed or errored out in the last step." \
         "See the 'previous_tool_call_name', 'previous_tool_call_args', and 'previous_tool_call_output' fields" \
@@ -65,9 +68,12 @@ class WebToolOutputEvaluatorSignature(dspy.Signature):
     previous_tool_call_name: str = dspy.InputField(desc="The name of the tool called in the previous step")
     previous_tool_call_args: dict[str, Any] = dspy.InputField(desc="The arguments given to the tool called in the previous step")
     previous_tool_call_output: str = dspy.InputField(desc="The output of the previous tool call.")
-    # current_browser_screenshot: dspy.Image = dspy.InputField(
-    #     desc="Image of what the browser currently looks like based on any previous interactions." \
-    #     "Blank if no previous interactions"
+    current_browser_screenshot: dspy.Image = dspy.InputField(
+        desc="Image of what the browser currently looks like based on any previous interactions." \
+        "Blank if no previous interactions"
+    )
+    # current_browser_snapshot: str = dspy.InputField(
+    #     desc="Snapshot containing refs to buttons and interactable divs in the current browser page"
     # )
     reasoning: str = dspy.OutputField(
         desc="This should never be 'None'. First describe what the browser looks like at the current time." \
@@ -118,6 +124,7 @@ class BrowserAgentSystem:
 
         previous_browser_screenshot = None
         current_browser_screenshot = None
+        current_browser_snapshot = "None"
         previous_subtask = "None"
         previous_tool_call_name = "None"
         previous_tool_call_args = "None"
@@ -130,6 +137,7 @@ class BrowserAgentSystem:
                 tools = await session.list_tools()
                 tools = [dspy.Tool.from_mcp_tool(session, tool) for tool in tools.tools]
                 self.tools = {tool.name: tool for tool in tools}
+                snapshot_tool = self.tools["browser_snapshot"]
                 screenshot_tool = self.tools["browser_take_screenshot"]
 
                 # Instantiate task evaluator
@@ -148,10 +156,10 @@ class BrowserAgentSystem:
                     .prepend("selected_tool_args", dspy.OutputField(), type_=dict[str, Any]))
                 stream_tool_prediction = dspy.streamify(
                     self.tool_prediction,
-                    # stream_listeners=[
-                    #     dspy.streaming.StreamListener(signature_field_name="reasoning"),
-                    #     dspy.streaming.StreamListener(signature_field_name="next_task"),
-                    # ],
+                    stream_listeners=[
+                        # dspy.streaming.StreamListener(signature_field_name="selected_tool_name"),
+                        # dspy.streaming.StreamListener(signature_field_name="selected_tool_args"),
+                    ],
                 )
 
                 # Main Reasoning Loop
@@ -162,8 +170,9 @@ class BrowserAgentSystem:
 
                     # Create the output stream object based on the current task
                     output_stream = stream_next_step_planning(
-                        # previous_browser_screenshot=image_or_blank(previous_browser_screenshot),
-                        # current_browser_screenshot=image_or_blank(current_browser_screenshot),
+                        previous_browser_screenshot=image_or_blank(previous_browser_screenshot),
+                        current_browser_screenshot=image_or_blank(current_browser_screenshot),
+                        # current_browser_snapshot=current_browser_snapshot,
                         overall_goal=overall_goal,
                         previous_subtask=previous_subtask,
                         previous_tool_call_name=previous_tool_call_name,
@@ -190,8 +199,9 @@ class BrowserAgentSystem:
                     # Create the output stream object based on the current task
                     output_stream = stream_tool_prediction(
                         overall_goal=overall_goal,
-                        previous_browser_screenshot=image_or_blank(previous_browser_screenshot),
-                        current_browser_screenshot=image_or_blank(current_browser_screenshot),
+                        # previous_browser_screenshot=image_or_blank(previous_browser_screenshot),
+                        # current_browser_screenshot=image_or_blank(current_browser_screenshot),
+                        current_browser_snapshot=current_browser_snapshot,
                         task=subtask,
                         tools=self.tools,
                     )
@@ -206,6 +216,8 @@ class BrowserAgentSystem:
                     # Take a screenshot of the browser before the tool call
                     previous_browser_screenshot = current_browser_screenshot
                     current_browser_screenshot = await show_browser(screenshot_tool)
+                    current_browser_snapshot = await snapshot_tool.acall()
+                    print(current_browser_snapshot)
 
                     # Determine the result of the tool call (Success or Error)
                     tool_call_result = ""
@@ -227,6 +239,7 @@ class BrowserAgentSystem:
                     # Take a screenshot of the browser after the tool was called
                     previous_browser_screenshot = current_browser_screenshot
                     current_browser_screenshot = await show_browser(screenshot_tool)
+                    current_browser_snapshot = await snapshot_tool.acall()
 
                     # Append the current messages to the history
                     self.history.messages.append({"overall_goal": overall_goal, "subtask": subtask, **tool_prediction_response.toDict()})
