@@ -1,4 +1,5 @@
-FROM node:22-alpine
+# Use GitHub Container Registry mirror to avoid Docker Hub rate limits
+FROM ghcr.io/nodejs/node:22-alpine
 
 WORKDIR /app
 

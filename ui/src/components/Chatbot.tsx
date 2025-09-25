@@ -20,11 +20,11 @@ const Chatbot: React.FC<ChatbotProps> = ({setPageState}) => {
     };
 
     return (
-        <>
-            <h1>Chatbot Component Goes Here</h1>
-            <button onClick={toggleChatbot}>Talk to Chatbot</button>
-            <button onClick={backToLogin}>Back to Login</button>
-        </>
+        <div className="chatbot-container">
+            <h1 className="app-title">Chatbot Component Goes Here</h1>
+            <button className='continue-btn' onClick={toggleChatbot}>Talk to Chatbot</button>
+            <button className='continue-btn' onClick={backToLogin}>Back to Login</button>
+        </div>
     )
 
 };
