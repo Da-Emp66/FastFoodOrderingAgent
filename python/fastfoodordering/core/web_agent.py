@@ -82,9 +82,12 @@ class WebToolOutputEvaluatorSignature(dspy.Signature):
         "If the previous tool call was not successful, give your thoughts as to why, and give details on what different to try next time in the 'next_task' field."
     )
     next_subtask: str = dspy.OutputField(
-        desc="This should never be 'None'. Instructions for what sub-task to do now to work towards the overall goal based on the" \
+        desc="Instructions for what sub-task to do now to work towards the overall goal based on the" \
         f"current state, or, if the overall goal is complete, fill with {FINISH_TOKEN} in all caps." \
-        "Make sure to describe this step in detail in human-readable natural language."
+        "Make sure to describe this step in detail in human-readable natural language. This field should never be 'None'." \
+        "Only reference buttons and items directly visible in the 'current_browser_screenshot'. If a required button is not directly visible," \
+        "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click." \
+        "If another click is required, you should include that in the next subtask."
     )
     # tools: list[dspy.Tool] = dspy.InputField(
     #     desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language."
@@ -112,6 +115,8 @@ class BrowserAgentSystem:
             ],
             env=None,
         )
+        self.session = None
+        self.custom_tools = []
         # Task management and problem solving-loop
         self.history = dspy.History(messages=[])
     
@@ -134,8 +139,10 @@ class BrowserAgentSystem:
         async with stdio_client(self.server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
+                self.session = session
                 tools = await session.list_tools()
-                tools = [dspy.Tool.from_mcp_tool(session, tool) for tool in tools.tools]
+                tools = [dspy.Tool(tool_function) for tool_function in self.custom_tools] + \
+                    [dspy.Tool.from_mcp_tool(session, tool) for tool in tools.tools]
                 self.tools = {tool.name: tool for tool in tools}
                 snapshot_tool = self.tools["browser_snapshot"]
                 screenshot_tool = self.tools["browser_take_screenshot"]
@@ -154,13 +161,7 @@ class BrowserAgentSystem:
                 self.tool_prediction = dspy.Predict(WebToolSelectionSignature
                     .prepend("selected_tool_name", dspy.OutputField(), type_=Literal[tuple(self.tools.keys())])
                     .prepend("selected_tool_args", dspy.OutputField(desc="This should ALWAYS be a valid JSON. If using browser_click, always pass the JSON fields 'element' and 'ref' as their string values based on the 'task' and 'current_browser_snapshot' definitions."), type_=dict[str, Any]))
-                stream_tool_prediction = dspy.streamify(
-                    self.tool_prediction,
-                    stream_listeners=[
-                        # dspy.streaming.StreamListener(signature_field_name="selected_tool_name"),
-                        # dspy.streaming.StreamListener(signature_field_name="selected_tool_args"),
-                    ],
-                )
+                stream_tool_prediction = dspy.streamify(self.tool_prediction)
 
                 # Main Reasoning Loop
                 iteration = 0
@@ -178,7 +179,7 @@ class BrowserAgentSystem:
                         previous_tool_call_name=previous_tool_call_name,
                         previous_tool_call_args=previous_tool_call_args,
                         previous_tool_call_output=previous_tool_call_output,
-                        # tools=self.tools,
+                        # tools=list(self.tools.values()),
                         history=self.history,
                     )
                     
@@ -203,7 +204,7 @@ class BrowserAgentSystem:
                         # current_browser_screenshot=image_or_blank(current_browser_screenshot),
                         current_browser_snapshot=current_browser_snapshot,
                         task=subtask,
-                        tools=self.tools,
+                        tools=list(self.tools.values()),
                     )
 
                     # Show the LLM's outputs as it generates the tool prediction
@@ -221,19 +222,33 @@ class BrowserAgentSystem:
 
                     # Determine the result of the tool call (Success or Error)
                     tool_call_result = ""
-                    if tool_prediction_response.selected_tool_name in self.tools:
+
+                    selected_tool_name = tool_prediction_response.selected_tool_name
+                    selected_tool_args = tool_prediction_response.selected_tool_args
+                    if selected_tool_name in self.tools:
                         try:
-                            print(f"Tool: {tool_prediction_response.selected_tool_name}")
-                            print(f"Args: {tool_prediction_response.selected_tool_args}")
-                            tool = self.tools[tool_prediction_response.selected_tool_name]
-                            tool_call_result = await tool.acall(**tool_prediction_response.selected_tool_args)
+                            # TODO: Add enforced structured generation. Right now, the model struggles
+                            # with the JSON generation in the format described by MCP
+                            try:
+                                # Correct a common formatting mistake in JSON structure
+                                if selected_tool_name in selected_tool_args and \
+                                    isinstance(selected_tool_args[selected_tool_name], dict):
+                                    selected_tool_args = selected_tool_args[selected_tool_name]
+                            except Exception as e:
+                                print(f"Error in correcting JSON: {e}")
+                            
+                            print(f"Tool: {selected_tool_name}")
+                            print(f"Args: {selected_tool_args}")
+
+                            tool = self.tools[selected_tool_name]
+                            tool_call_result = await tool.acall(**selected_tool_args)
                         except Exception as e:
                             print(e)
                             tool_call_result = e
                     else:
-                        tool_call_result = f"Tool {tool_prediction_response.selected_tool_name} not in list of available tools. List of available tools is {list(self.tools.keys())}."
-                    previous_tool_call_name = tool_prediction_response.selected_tool_name
-                    previous_tool_call_args = tool_prediction_response.selected_tool_args
+                        tool_call_result = f"Tool {selected_tool_name} not in list of available tools. List of available tools is {list(self.tools.keys())}."
+                    previous_tool_call_name = selected_tool_name
+                    previous_tool_call_args = selected_tool_args
                     previous_tool_call_output = tool_call_result
 
                     # Take a screenshot of the browser after the tool was called
