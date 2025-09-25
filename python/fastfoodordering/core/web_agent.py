@@ -51,11 +51,11 @@ class WebToolOutputEvaluatorSignature(dspy.Signature):
     previously completed steps and tool calls, and current browser state."""
 
     overall_goal: str = dspy.InputField(desc="The over-arching complex task to complete.")
-    previous_browser_screenshot: dspy.Image = dspy.InputField(
-        desc="Image of what the browser looked like last time, before the last interaction." \
-        "(This, along with 'current_browser_screenshot' can help tell you if the last call" \
-        "succeeded or not.) Blank if no previous interactions"
-    )
+    # previous_browser_screenshot: dspy.Image = dspy.InputField(
+    #     desc="Image of what the browser looked like last time, before the last interaction." \
+    #     "(This, along with 'current_browser_screenshot' can help tell you if the last call" \
+    #     "succeeded or not.) Blank if no previous interactions"
+    # )
     previous_subtask: str = dspy.InputField(
         desc="The subtask that was either completed or errored out in the last step." \
         "See the 'previous_tool_call_name', 'previous_tool_call_args', and 'previous_tool_call_output' fields" \
@@ -65,10 +65,10 @@ class WebToolOutputEvaluatorSignature(dspy.Signature):
     previous_tool_call_name: str = dspy.InputField(desc="The name of the tool called in the previous step")
     previous_tool_call_args: dict[str, Any] = dspy.InputField(desc="The arguments given to the tool called in the previous step")
     previous_tool_call_output: str = dspy.InputField(desc="The output of the previous tool call.")
-    current_browser_screenshot: dspy.Image = dspy.InputField(
-        desc="Image of what the browser currently looks like based on any previous interactions." \
-        "Blank if no previous interactions"
-    )
+    # current_browser_screenshot: dspy.Image = dspy.InputField(
+    #     desc="Image of what the browser currently looks like based on any previous interactions." \
+    #     "Blank if no previous interactions"
+    # )
     reasoning: str = dspy.OutputField(
         desc="This should never be 'None'. First describe what the browser looks like at the current time." \
         "Then evaluate if the previous tool call was successful." \
@@ -162,8 +162,8 @@ class BrowserAgentSystem:
 
                     # Create the output stream object based on the current task
                     output_stream = stream_next_step_planning(
-                        previous_browser_screenshot=image_or_blank(previous_browser_screenshot),
-                        current_browser_screenshot=image_or_blank(current_browser_screenshot),
+                        # previous_browser_screenshot=image_or_blank(previous_browser_screenshot),
+                        # current_browser_screenshot=image_or_blank(current_browser_screenshot),
                         overall_goal=overall_goal,
                         previous_subtask=previous_subtask,
                         previous_tool_call_name=previous_tool_call_name,
@@ -213,10 +213,10 @@ class BrowserAgentSystem:
                         try:
                             tool = self.tools[tool_prediction_response.selected_tool_name]
                             tool_call_result = await tool.acall(**tool_prediction_response.selected_tool_args)
-                            # print(f"Tool: {tool_prediction_response.selected_tool_name}")
-                            # print(f"Args: {tool_prediction_response.selected_tool_args}")
+                            print(f"Tool: {tool_prediction_response.selected_tool_name}")
+                            print(f"Args: {tool_prediction_response.selected_tool_args}")
                         except Exception as e:
-                            # print(e)
+                            print(e)
                             tool_call_result = e
                     else:
                         tool_call_result = f"Tool {tool_prediction_response.selected_tool_name} not in list of available tools. List of available tools is {list(self.tools.keys())}."
@@ -261,11 +261,11 @@ if __name__ == "__main__":
         "Return to me the full name of the burger you added to the order."
     )
 
-    # print(browser_search_agent(
+    # browser_search_agent(
     #     "Go to McDonald's website (https://www.mcdonalds.com/), close out of any cookies tabs, and scroll all the way down"
-    # ))
+    # )
 
-    # print(browser_search_agent("Scroll and click the button"))
+    # browser_search_agent("Scroll and click the button")
     
     # output = browser_search_agent("Navigate to McDonald's website (https://www.mcdonalds.com/)")
     # print(output)
