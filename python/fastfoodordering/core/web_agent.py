@@ -86,9 +86,9 @@ class WebToolOutputEvaluatorSignature(dspy.Signature):
         f"current state, or, if the overall goal is complete, fill with {FINISH_TOKEN} in all caps." \
         "Make sure to describe this step in detail in human-readable natural language."
     )
-    tools: list[dspy.Tool] = dspy.InputField(
-        desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language."
-    )
+    # tools: list[dspy.Tool] = dspy.InputField(
+    #     desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language."
+    # )
     history: dspy.History = dspy.InputField(desc="Previous browser interactions, tool calls, and reasoning")
     
 class BrowserAgentSystem:
@@ -153,7 +153,7 @@ class BrowserAgentSystem:
                 # Instantiate tool predictor
                 self.tool_prediction = dspy.Predict(WebToolSelectionSignature
                     .prepend("selected_tool_name", dspy.OutputField(), type_=Literal[tuple(self.tools.keys())])
-                    .prepend("selected_tool_args", dspy.OutputField(), type_=dict[str, Any]))
+                    .prepend("selected_tool_args", dspy.OutputField(desc="This should ALWAYS be a valid JSON. If using browser_click, always pass the JSON fields 'element' and 'ref' as their string values based on the 'task' and 'current_browser_snapshot' definitions."), type_=dict[str, Any]))
                 stream_tool_prediction = dspy.streamify(
                     self.tool_prediction,
                     stream_listeners=[
@@ -178,7 +178,7 @@ class BrowserAgentSystem:
                         previous_tool_call_name=previous_tool_call_name,
                         previous_tool_call_args=previous_tool_call_args,
                         previous_tool_call_output=previous_tool_call_output,
-                        tools=self.tools,
+                        # tools=self.tools,
                         history=self.history,
                     )
                     
@@ -223,10 +223,10 @@ class BrowserAgentSystem:
                     tool_call_result = ""
                     if tool_prediction_response.selected_tool_name in self.tools:
                         try:
-                            tool = self.tools[tool_prediction_response.selected_tool_name]
-                            tool_call_result = await tool.acall(**tool_prediction_response.selected_tool_args)
                             print(f"Tool: {tool_prediction_response.selected_tool_name}")
                             print(f"Args: {tool_prediction_response.selected_tool_args}")
+                            tool = self.tools[tool_prediction_response.selected_tool_name]
+                            tool_call_result = await tool.acall(**tool_prediction_response.selected_tool_args)
                         except Exception as e:
                             print(e)
                             tool_call_result = e
