@@ -7,20 +7,20 @@ print(litellm.completion(
     base_url="http://localhost:8000",
 ))
 
-# import openai
-# client = openai.OpenAI(
-#     api_key="sk-1234",             # pass litellm proxy key, if you're using virtual keys
-#     base_url="http://localhost:8000" # litellm-proxy-base url
-# )
+import openai
+client = openai.OpenAI(
+    api_key="sk-1234",             # pass litellm proxy key, if you're using virtual keys
+    base_url="http://localhost:8000" # litellm-proxy-base url
+)
 
-# response = client.chat.completions.create(
-#     model="my-model",
-#     messages = [
-#         {
-#             "role": "user",
-#             "content": "what llm are you"
-#         }
-#     ],
-# )
+response = client.chat.completions.create(
+    model="my-model",
+    messages = [
+        {
+            "role": "user",
+            "content": "Who are you?"
+        }
+    ],
+)
 
-# print(response)
+print(response)
