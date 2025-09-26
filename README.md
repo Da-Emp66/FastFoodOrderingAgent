@@ -39,3 +39,15 @@ Then go to http://localhost:10000/ to view application logs.
     cd python/fastfoodordering
     wget -qO- https://astral.sh/uv/install.sh | sh
     uv sync
+
+### Possible Models List
+
+GGUF-formatted Models:
+
+- [MiniCPM-V-4_5](https://huggingface.co/openbmb/MiniCPM-V-4_5-gguf/tree/main) (tested, strong)
+- [UI-TARS-1.5-7B](https://huggingface.co/mradermacher/UI-TARS-1.5-7B-GGUF/tree/main) or [other quantized versions](https://huggingface.co/models?other=base_model:quantized:ByteDance-Seed/UI-TARS-1.5-7B) (all untested)
+- [UI-TARS-7B-DPO](https://huggingface.co/bartowski/UI-TARS-7B-DPO-GGUF/tree/main) (untested)
+
+Models that would have to be converted to GGUF (all untested):
+
+- [AgentCPM-GUI](https://huggingface.co/openbmb/AgentCPM-GUI)
