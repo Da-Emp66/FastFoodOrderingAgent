@@ -47,7 +47,18 @@ GGUF-formatted Models:
 - [MiniCPM-V-4_5](https://huggingface.co/openbmb/MiniCPM-V-4_5-gguf/tree/main) (tested, strong)
 - [UI-TARS-1.5-7B](https://huggingface.co/mradermacher/UI-TARS-1.5-7B-GGUF/tree/main) or [other quantized versions](https://huggingface.co/models?other=base_model:quantized:ByteDance-Seed/UI-TARS-1.5-7B) (all untested)
 - [UI-TARS-7B-DPO](https://huggingface.co/bartowski/UI-TARS-7B-DPO-GGUF/tree/main) (untested)
+- [InternVL3_5-8B](https://huggingface.co/bartowski/OpenGVLab_InternVL3_5-8B-GGUF/tree/main) (untested)
+
+Text-only GGUF, but may be worth looking into:
+- [Qwen3-1.7B](https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/tree/main) (maybe text-only?, untested)
+- [Qwen3-4B-toolcalling-gguf-codex](https://huggingface.co/Manojb/Qwen3-4B-toolcalling-gguf-codex) (maybe text-only?, untested)
+- [Mistral-7B-Instruct-v0.3](https://huggingface.co/MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF) (maybe text-only?, untested)
 
 Models that would have to be converted to GGUF (all untested):
 
 - [AgentCPM-GUI](https://huggingface.co/openbmb/AgentCPM-GUI)
+
+More places to look:
+
+- [HuggingFace Trending GGUF Models](https://huggingface.co/models?library=gguf&p=4&sort=trending)
+
