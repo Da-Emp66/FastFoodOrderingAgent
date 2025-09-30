@@ -17,7 +17,7 @@ interface HungryInputProps {
 export default function HungryInput({ onSubmit }: HungryInputProps) {
   const [query, setQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,12 +45,12 @@ export default function HungryInput({ onSubmit }: HungryInputProps) {
         setIsListening(true);
       };
 
-      recognition.onresult = (event) => {
+      recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setQuery(transcript);
       };
 
-      recognition.onerror = (event) => {
+      recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
       };

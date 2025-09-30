@@ -5,7 +5,7 @@ import {
   Typography,
   Paper,
   Container,
-  Avatar,
+  // Avatar,
   Chip
 } from '@mui/material';
 import { Mic, MicOff } from '@mui/icons-material';
@@ -60,7 +60,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
     return [];
   });
   const [currentInput, setCurrentInput] = useState('');
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
 
   const startListening = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -76,7 +76,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         setCurrentInput('Listening...');
       };
 
-      recognition.onresult = (event) => {
+      recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setCurrentInput(transcript);
 
@@ -102,7 +102,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         }, 1000);
       };
 
-      recognition.onerror = (event) => {
+      recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
         setCurrentInput('');
