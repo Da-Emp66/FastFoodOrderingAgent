@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from typing import Literal
 # import nest_asyncio
 from fastmcp import FastMCP
@@ -9,6 +10,8 @@ page: StagehandPage = None
 # # Patch asyncio to allow nested event loops
 # nest_asyncio.apply()
 
+GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
+
 mcp = FastMCP("Custom StageHand MCP Server")
 
 @mcp.tool
@@ -16,6 +19,7 @@ async def navigate(url: str):
     global page
     try:
         await page.goto(url)
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success"
     except Exception as e:
         return str(e)
@@ -33,6 +37,7 @@ async def scroll(direction: Literal["left", "right", "up", "down"], delta_pixels
             case "up": delta_y_pixels -= delta_pixels
 
         await page._page.mouse.wheel(delta_x_pixels, delta_y_pixels)
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success"
     except Exception as e:
         return str(e)
@@ -48,6 +53,7 @@ async def click_element_by_text(text: str):
             if await element.bounding_box() is not None:
                 await element.click()
                 any_elements_clicked = True
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success" if any_elements_clicked else f"No elements with text '{text}' found in visible screen."
     except Exception as e:
         return str(e)
@@ -70,6 +76,7 @@ async def click_coordinates(x: float, y: float):
     global page
     try:
         await page._page.mouse.click(x, y)
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success"
     except Exception as e:
         return str(e)
@@ -84,6 +91,14 @@ async def screenshot():
         return path
     except Exception as e:
         return str(e)
+    
+async def set_location():
+    global page
+    page.context.set_geolocation({
+        "latitude": 28.5383,  # Example: Orlando, FL
+        "longitude": -81.3792,
+        "accuracy": 100  # Accuracy in meters
+    })
 
 async def main():
     global page

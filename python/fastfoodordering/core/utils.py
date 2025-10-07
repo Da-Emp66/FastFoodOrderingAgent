@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from io import StringIO
 import os
 from pathlib import Path
@@ -6,8 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Optional, Union
 from box import Box
 import cv2
-import dspy
-from mcp import StdioServerParameters
+from mcp import ClientSession, StdioServerParameters, Tool
 import numpy as np
 from pydantic import BaseModel
 import yaml
@@ -62,3 +62,12 @@ class MCPUserConfiguration(BaseModel):
 
 class ApplicationConfiguration(BaseModel):
     agents: Dict[str, Any]
+
+@dataclass
+class McpToolFunctionWrapper:
+    tool: Tool
+    session: ClientSession
+
+    async def __call__(self, **kwargs):
+        result = await self.session.call_tool(name=self.tool.name, arguments=kwargs)
+        return "\n".join(map(lambda text_content: text_content.text, result.content))

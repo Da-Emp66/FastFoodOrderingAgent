@@ -2,6 +2,7 @@ import abc
 import asyncio
 import enum
 from itertools import chain
+import json
 import os
 import re
 import time
@@ -11,7 +12,15 @@ import cv2
 from dotenv import load_dotenv
 import dspy
 import litellm
-from mcp import ClientSession, StdioServerParameters
+from guidance import (
+    image as guidance_image,
+    json as generate_constrained_json,
+    system as guidance_system,
+    user as guidance_user,
+    assistant as guidance_assistant,
+)
+from guidance.models import OpenAI as GuidanceOpenAI
+from mcp import StdioServerParameters
 from mcp.client.session_group import ClientSessionGroup
 import numpy as np
 from openai import OpenAI
@@ -19,7 +28,7 @@ from pydantic import BaseModel, Field
 from stagehand import StagehandConfig, Stagehand
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 
-from core.utils import MCPUserConfiguration, FINISH_TOKEN, from_config
+from core.utils import MCPUserConfiguration, FINISH_TOKEN, McpToolFunctionWrapper, from_config
 
 # Environment
 os.environ["MODEL"] = "openai/models/ggml-model-Q4_K_M.gguf"
@@ -32,6 +41,10 @@ MODEL_TO_CLIENT_CLASS_MAP.update({litellm.api_base: lambda *args, **kwargs: Open
 # Load environment variables
 load_dotenv()
 
+# Constants
+FILEPATH_REGEX = r"((?:/[^\s\/]+)+(?:\.(?:\w+)))"
+
+# Definitions
 class BrowserToolCaller(metaclass=abc.ABCMeta):
     async def initialize_tools(self):
         pass
@@ -91,7 +104,7 @@ class StageHandBrowserToolCaller(BrowserToolCaller):
         image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
         return image
 
-class DSPyBrowserVisibilityConfiguration(BaseModel):
+class BrowserVisibilityConfiguration(BaseModel):
     screenshot_tool_name: Optional[str] = "browser_take_screenshot"
     snapshot_tool_name: Optional[str] = "browser_snapshot"
 
@@ -103,11 +116,13 @@ class DSPyBrowserToolCallerConfiguration(MCPUserConfiguration):
                 "@playwright/mcp@latest",
                 "--headless",
                 "--caps=vision",
+                # "--viewport-size 1280x720",
+                # --config <file with something like https://github.com/microsoft/playwright-mcp/issues/1114#issuecomment-3378715243>
             ],
             "env": None,
         },
     }
-    browser_visibility: DSPyBrowserVisibilityConfiguration = DSPyBrowserVisibilityConfiguration()
+    browser_visibility: BrowserVisibilityConfiguration = BrowserVisibilityConfiguration()
 
 def dspy_image_or_blank(image: Optional[cv2.typing.MatLike]) -> dspy.Image:
     if image is None:
@@ -230,7 +245,7 @@ class DSPyBrowserToolCaller(BrowserToolCaller):
         screenshot_tool = self.tools.get(self.configuration.browser_visibility.screenshot_tool_name, None)
         if screenshot_tool is not None:
             screenshot_text = await screenshot_tool.acall() # fullPage=True
-            screenshot_filepath = next(chain(re.findall(r"((?:/[^\s\/]+)+(?:\.(?:\w+)))", screenshot_text), [None]))
+            screenshot_filepath = next(chain(re.findall(FILEPATH_REGEX, screenshot_text), [None]))
             image = cv2.imread(screenshot_filepath)
             if os.path.exists(screenshot_filepath) and \
                 os.path.isfile(screenshot_filepath) and \
@@ -259,19 +274,96 @@ class CodeBrowserToolCaller(BrowserToolCaller):
         # # Create the MCP session and initialize tools
         # self.group = ClientSessionGroup(component_name_hook=lambda name, server_info: f"{(server_info.name)}_{name}")
         # self.mcp_sessions = { server_name: (await self.group.connect_to_server(server_params)) for server_name, server_params in self.configuration.mcp_servers.items() }
-        pass
+        raise NotImplementedError()
 
 class ConstrainedBrowserToolCallerConfiguration(MCPUserConfiguration):
-    pass
+    system_prompt: str = "Your goal is to select the best tool to select the best tool for the user based on the current task."
+    tool_selection_user_prompt_format: str = "Overall Goal: {overall_goal}\nCurrent Task: {subtask}\n\nNotes: If asked to go to a url, use 'navigate', not a 'click' tool."
+    tool_args_user_prompt_format: str = "Overall Goal: {overall_goal}\nCurrent Task: {subtask}\n\nSelected tool is {name}. Now determine the arguments:"
+    browser_visibility: BrowserVisibilityConfiguration = BrowserVisibilityConfiguration()
 
 class ConstrainedBrowserToolCaller(BrowserToolCaller):
     def __init__(self, configuration: Union[Dict[str, Any], ConstrainedBrowserToolCallerConfiguration]):
         self.configuration: ConstrainedBrowserToolCallerConfiguration = from_config(configuration, ConstrainedBrowserToolCallerConfiguration)
+        self.tools = {}
+        self.lm = GuidanceOpenAI(
+            "o1-" + os.getenv("MODEL"),
+            echo=True,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL"),
+        )
+        with guidance_system():
+            self.lm += self.configuration.system_prompt
 
     async def initialize_tools(self):
+        tools = {}
         # Create the MCP session and initialize tools
         self.group = ClientSessionGroup(component_name_hook=lambda name, server_info: f"{(server_info.name)}_{name}")
         self.mcp_sessions = { server_name: (await self.group.connect_to_server(server_params)) for server_name, server_params in self.configuration.mcp_servers.items() }
+        for _session_name, session in self.mcp_sessions.items():
+            session_tools = (await session.list_tools()).tools
+            tools.update({tool.name: McpToolFunctionWrapper(tool=tool, session=session) for tool in session_tools})
+        # for tool in self.configuration.custom_tools: ...
+
+        self.tools = tools
+
+    async def determine_and_call_tools(
+        self,
+        overall_goal,
+        subtask,
+        previous_browser_screenshot = None,
+        current_browser_screenshot = None,
+        current_browser_snapshot = None
+    ):
+        cv2.imwrite("tmp.jpg", current_browser_screenshot)
+        with guidance_user():
+            self.lm += guidance_image("tmp.jpg") + self.configuration.tool_selection_user_prompt_format.replace("{overall_goal}", overall_goal).replace("{subtask}", subtask)
+        name = None
+        with guidance_assistant():
+            self.lm += generate_constrained_json(name='tool_name_json', schema={
+                'properties': {
+                    'tool_name': {
+                        'enum': list(self.tools.keys()),
+                        'title': 'Tool Name',
+                        'type': 'string'
+                    }
+                },
+                'required': ['tool_name'],
+                'title': 'ToolName',
+                'type': 'object',
+            })
+            name = json.loads(self.lm["tool_name_json"])["tool_name"]
+        with guidance_user():
+            self.lm += self.configuration.tool_args_user_prompt_format.replace("{overall_goal}", overall_goal).replace("{subtask}", subtask).replace("{name}", name)
+        with guidance_assistant():
+            if name in self.tools:
+                selected_tool = self.tools[name]
+                print(selected_tool.tool.inputSchema)
+                self.lm += generate_constrained_json(name="generated_args", schema=selected_tool.tool.inputSchema)
+                args = json.loads(self.lm["generated_args"])
+                selected_tool_representation = str({"tool": name, "args": args})
+                print(selected_tool_representation)
+                try:
+                    result = await selected_tool(**args)
+                    return selected_tool_representation, result
+                except Exception as e:
+                    return selected_tool_representation, str(e)
+            else:
+                return str({"tool": name, "args": {}}), f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}"
+    
+    async def screenshot(self) -> Optional[cv2.typing.MatLike]:
+        screenshot_tool = self.tools.get(self.configuration.browser_visibility.screenshot_tool_name, None)
+        if screenshot_tool is not None:
+            screenshot_text = await screenshot_tool()
+            screenshot_filepath = next(chain(re.findall(FILEPATH_REGEX, screenshot_text), [None]))
+            image = cv2.imread(screenshot_filepath)
+            if os.path.exists(screenshot_filepath) and \
+                os.path.isfile(screenshot_filepath) and \
+                os.path.splitext(screenshot_filepath)[-1] in ["jpg", "jpeg", "png"]:
+                    os.remove(screenshot_filepath)
+        else:
+            image = None
+        return image
 
 class ToolModes(str, enum.Enum):
     Code = "code"
@@ -413,9 +505,9 @@ class PlannerTypes(str, enum.Enum):
 
 class BrowserAgentConfiguration(BaseModel):
     tool_mode: ToolModes = ToolModes.Constrained
-    tools: Optional[Union[DSPyBrowserToolCallerConfiguration, Any]] = None
+    tools: Optional[Dict[str, Any]] = None
     planner_type: PlannerTypes = PlannerTypes.DSPy
-    planner: Union[DSPyPlannerConfiguration] = DSPyPlannerConfiguration()
+    planner: Union[Dict[str, Any]] = DSPyPlannerConfiguration()
     browser_visibility_mode: BrowserVisibilityMode = BrowserVisibilityMode.Default
 
 class BrowserAgentSystem:
@@ -489,6 +581,8 @@ class BrowserAgentSystem:
             previous_browser_screenshot = current_browser_screenshot
             current_browser_screenshot = await self.tool_caller.screenshot()
             if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
+            # current_browser_screenshot = cv2.resize(current_browser_screenshot, (300, 200))
+            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.45, fy=0.45, interpolation=cv2.INTER_LINEAR)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             if current_browser_snapshot is not None: print(current_browser_snapshot)
 
@@ -507,6 +601,8 @@ class BrowserAgentSystem:
             previous_browser_screenshot = current_browser_screenshot
             current_browser_screenshot = await self.tool_caller.screenshot()
             if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
+            # current_browser_screenshot = cv2.resize(current_browser_screenshot, (300, 200))
+            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.45, fy=0.45, interpolation=cv2.INTER_LINEAR)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
 
             # Append the current messages to the history
@@ -572,8 +668,31 @@ if __name__ == "__main__":
     # })
 
     ### DSPy + Custom StageHand MCP Tools
+    # browser_search_agent = BrowserAgentSystem({
+    #     "tool_mode": "dspy",
+    #     "tools": {
+    #         "mcp_servers": {
+    #             "playwright": {
+    #                 "command": "uv",
+    #                 "args": [
+    #                     "run",
+    #                     "core/web_tools.py",
+    #                     # "--caps=vision",
+    #                 ],
+    #                 "env": None,
+    #             },
+    #         },
+    #         "browser_visibility": {
+    #             "screenshot_tool_name": "screenshot",
+    #             # "snapshot_tool_name": "browser_snapshot",
+    #         },
+    #     },
+    #     "browser_visibility_mode": "debug",
+    # })
+
+    ### Constrained inference
     browser_search_agent = BrowserAgentSystem({
-        "tool_mode": "dspy",
+        "tool_mode": "constrained",
         "tools": {
             "mcp_servers": {
                 "playwright": {
@@ -591,6 +710,11 @@ if __name__ == "__main__":
                 # "snapshot_tool_name": "browser_snapshot",
             },
         },
+        "planner": {
+            "visibility_settings": {
+                "tools_visible": True,
+            },
+        },
         "browser_visibility_mode": "debug",
     })
 
@@ -598,6 +722,3 @@ if __name__ == "__main__":
     browser_search_agent(
         "Order me a burger from McDonald's (https://www.mcdonalds.com/)"
     )
-    # browser_search_agent(
-    #     "Go to McDonald's website (https://www.mcdonalds.com/), close out of any cookies tabs, and scroll all the way down"
-    # )
