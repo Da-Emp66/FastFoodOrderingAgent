@@ -186,9 +186,9 @@ class DSPyBrowserToolCaller(BrowserToolCaller):
             overall_goal=overall_goal,
             task=subtask,
             tools=list(self.tools.values()),
-            current_browser_snapshot=current_browser_snapshot,
-            previous_browser_screenshot=dspy_image_or_blank(previous_browser_screenshot),
-            current_browser_screenshot=dspy_image_or_blank(current_browser_screenshot),
+            current_browser_snapshot=current_browser_snapshot, # if visibility
+            previous_browser_screenshot=dspy_image_or_blank(previous_browser_screenshot), # if visibility
+            current_browser_screenshot=dspy_image_or_blank(current_browser_screenshot), # if visibility
         )
 
         # Show the LLM's outputs as it generates the tool prediction
@@ -221,6 +221,9 @@ class DSPyBrowserToolCaller(BrowserToolCaller):
         else:
             tool_call_result = f"Tool {selected_tool_name} not in list of available tools. List of available tools is {list(self.tools.keys())}."
     
+        print({"tool": selected_tool_name, "args": selected_tool_args})
+        print(tool_call_result)
+
         return str({"tool": selected_tool_name, "args": selected_tool_args}), tool_call_result
 
     async def screenshot(self) -> Optional[cv2.typing.MatLike]:
@@ -539,7 +542,7 @@ if __name__ == "__main__":
     )
     dspy.settings.configure(lm=lm)
 
-    ### DSPy Tools
+    ### DSPy + PlayWright MCP Tools
     # browser_search_agent = BrowserAgentSystem({
     #     "tool_mode": "dspy",
     #     "tools": {
@@ -563,15 +566,37 @@ if __name__ == "__main__":
     # })
 
     ### StageHand Tools
+    # browser_search_agent = BrowserAgentSystem({
+    #     "tool_mode": "stagehand",
+    #     "browser_visibility_mode": "debug",
+    # })
+
+    ### DSPy + Custom StageHand MCP Tools
     browser_search_agent = BrowserAgentSystem({
-        "tool_mode": "stagehand",
+        "tool_mode": "dspy",
+        "tools": {
+            "mcp_servers": {
+                "playwright": {
+                    "command": "uv",
+                    "args": [
+                        "run",
+                        "core/web_tools.py",
+                        # "--caps=vision",
+                    ],
+                    "env": None,
+                },
+            },
+            "browser_visibility": {
+                "screenshot_tool_name": "screenshot",
+                # "snapshot_tool_name": "browser_snapshot",
+            },
+        },
         "browser_visibility_mode": "debug",
     })
 
     ### Example inference
     browser_search_agent(
-        "Go to McDonald's website (https://www.mcdonalds.com/) and add a burger to the order. DO NOT ORDER THE BURGER. Simply put it in the cart and DO NOT GO TO CHECKOUT." \
-        "Return to me the full name of the burger you added to the order."
+        "Order me a burger from McDonald's (https://www.mcdonalds.com/)"
     )
     # browser_search_agent(
     #     "Go to McDonald's website (https://www.mcdonalds.com/), close out of any cookies tabs, and scroll all the way down"

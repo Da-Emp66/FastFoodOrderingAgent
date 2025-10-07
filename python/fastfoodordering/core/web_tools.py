@@ -1,39 +1,104 @@
+import asyncio
+import os
+from typing import Literal
+# import nest_asyncio
 from fastmcp import FastMCP
-from stagehand import StagehandPage
+from stagehand import Stagehand, StagehandConfig, StagehandPage
 page: StagehandPage = None
+
+# # Patch asyncio to allow nested event loops
+# nest_asyncio.apply()
 
 mcp = FastMCP("Custom StageHand MCP Server")
 
 @mcp.tool
 async def navigate(url: str):
     global page
-    await page.goto(url)
-    return "success"
+    try:
+        await page.goto(url)
+        return "success"
+    except Exception as e:
+        return str(e)
 
 @mcp.tool
-async def scroll(delta_x_pixels: float, delta_y_pixels: float):
+async def scroll(direction: Literal["left", "right", "up", "down"], delta_pixels: float):
     global page
-    await page._page.mouse.wheel(delta_x_pixels, delta_y_pixels)
-    return "success"
+    try:
+        delta_x_pixels = 0.0
+        delta_y_pixels = 0.0
+        match direction:
+            case "left": delta_x_pixels -= delta_pixels
+            case "right": delta_x_pixels += delta_pixels
+            case "down": delta_y_pixels += delta_pixels
+            case "up": delta_y_pixels -= delta_pixels
+
+        await page._page.mouse.wheel(delta_x_pixels, delta_y_pixels)
+        return "success"
+    except Exception as e:
+        return str(e)
 
 @mcp.tool
 async def click_element_by_text(text: str):
     global page
-    element = page._page.get_by_text(text)
-    await element.scroll_into_view_if_needed()
-    await element.click()
-    return "success"
+    try:
+        any_elements_clicked = False
+        for element in await page._page.get_by_text(text).all():
+            # Check that the element is visible
+            # NOTE: This relies on the LLM to give valid inputs on what is and is not visible
+            if await element.bounding_box() is not None:
+                await element.click()
+                any_elements_clicked = True
+        return "success" if any_elements_clicked else f"No elements with text '{text}' found in visible screen."
+    except Exception as e:
+        return str(e)
 
 @mcp.tool
 async def get_element_coordinates_by_text(text: str):
     global page
-    element = page._page.get_by_text(text)
-    element_bounding_box = await element.bounding_box()
-    return (element_bounding_box.x + (element_bounding_box.width / 2), element_bounding_box.y + (element_bounding_box.height / 2))
+    try:
+        bboxes = []
+        for element in await page._page.get_by_text(text).all():
+            element_bounding_box = await element.bounding_box()
+            if element_bounding_box is not None:
+                bboxes.append((element_bounding_box["x"] + (element_bounding_box["width"] / 2), element_bounding_box["y"] + (element_bounding_box["height"] / 2)))
+        return (str(bboxes) if len(bboxes) > 0 else f"No elements with text '{text}' found in visible screen.")
+    except Exception as e:
+        return str(e)
 
 @mcp.tool
 async def click_coordinates(x: float, y: float):
     global page
-    await page._page.mouse.click(x, y)
-    return "success"
+    try:
+        await page._page.mouse.click(x, y)
+        return "success"
+    except Exception as e:
+        return str(e)
 
+@mcp.tool
+async def screenshot():
+    global page
+    try:
+        path = "/tmp/fast-food-custom-stagehand-server/tmp.jpg"
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        await page._page.screenshot(path=path)
+        return path
+    except Exception as e:
+        return str(e)
+
+async def main():
+    global page
+    stagehand_config = StagehandConfig(
+        env="LOCAL",
+        model_name=os.getenv("MODEL_NAME"),
+        model_api_key=os.getenv("OPENAI_API_KEY"),
+        local_browser_launch_options={
+            "headless": True,
+        }
+    )
+    stagehand = Stagehand(stagehand_config)
+    await stagehand.init()
+    page = stagehand.page
+    await mcp.run_async()
+
+if __name__ == "__main__":
+    asyncio.run(main())
