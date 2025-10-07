@@ -3,11 +3,16 @@ import os
 from pathlib import Path
 import socket
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from box import Box
+import cv2
+import dspy
 from mcp import StdioServerParameters
+import numpy as np
 from pydantic import BaseModel
 import yaml
+
+FINISH_TOKEN = "<|COMPLETED_OVERALL_TASK|>"
 
 T = type
 _BasicConfigType = Union[Box, dict, str]
@@ -51,8 +56,9 @@ def load_yaml_string(yaml_string: str) -> Any:
     file_buffer.seek(0)
     return yaml.safe_load(file_buffer)
 
-class AgentConfiguration(BaseModel):
-    mcp_servers: Dict[str, StdioServerParameters]
+class MCPUserConfiguration(BaseModel):
+    mcp_servers: Dict[str, StdioServerParameters] = {}
+    custom_tools: List[Callable] = []
 
 class ApplicationConfiguration(BaseModel):
-    agents: Dict[str, AgentConfiguration]
+    agents: Dict[str, Any]
