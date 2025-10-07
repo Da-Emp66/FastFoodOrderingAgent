@@ -7,6 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "dspy[mcp]>=3.0.3",
     "easy-sync>=0.2.2",
+    "fastmcp>=2.12.4",
     "google-adk>=1.13.0",
     "litellm>=1.76.2",
     "mcp[cli]>=1.13.1",

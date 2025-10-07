@@ -69,6 +69,7 @@ class StageHandBrowserToolCaller(BrowserToolCaller):
     async def initialize_tools(self):
         await self.stagehand.init()
         self.page = self.stagehand.page
+        # await browser_search_agent.tool_caller.page.goto("https://www.mcdonalds.com/")
 
     async def determine_and_call_tools(
         self,
@@ -539,34 +540,33 @@ if __name__ == "__main__":
     dspy.settings.configure(lm=lm)
 
     ### DSPy Tools
-    browser_search_agent = BrowserAgentSystem({
-        "tool_mode": "dspy",
-        "tools": {
-            "mcp_servers": {
-                "playwright": {
-                    "command": "npx",
-                    "args": [
-                        "@playwright/mcp@latest",
-                        # "--headless",
-                        "--caps=vision",
-                    ],
-                    "env": None,
-                },
-            },
-            "browser_visibility": {
-                "screenshot_tool_name": "browser_take_screenshot",
-                "snapshot_tool_name": "browser_snapshot",
-            },
-        },
-        "browser_visibility_mode": "debug",
-    })
-
-    ### StageHand Tools
     # browser_search_agent = BrowserAgentSystem({
-    #     "tool_mode": "stagehand",
+    #     "tool_mode": "dspy",
+    #     "tools": {
+    #         "mcp_servers": {
+    #             "playwright": {
+    #                 "command": "npx",
+    #                 "args": [
+    #                     "@playwright/mcp@latest",
+    #                     # "--headless",
+    #                     "--caps=vision",
+    #                 ],
+    #                 "env": None,
+    #             },
+    #         },
+    #         "browser_visibility": {
+    #             "screenshot_tool_name": "browser_take_screenshot",
+    #             "snapshot_tool_name": "browser_snapshot",
+    #         },
+    #     },
     #     "browser_visibility_mode": "debug",
     # })
 
+    ### StageHand Tools
+    browser_search_agent = BrowserAgentSystem({
+        "tool_mode": "stagehand",
+        "browser_visibility_mode": "debug",
+    })
 
     ### Example inference
     browser_search_agent(
