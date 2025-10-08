@@ -5,19 +5,19 @@ include:
 services:
   llama-cpp-server:
     container_name: llama-cpp-server
-    image: ghcr.io/ggml-org/llama.cpp:full-cuda
-    entrypoint: ["/app/llama-server", "--host", "0.0.0.0", "--port", "8080", "-m", "/models/ggml-model-Q4_K_M.gguf", "--mmproj", "/models/mmproj-model-f16.gguf", "-n", "4000", "-c", "20000"]
+    # Use CPU version if GPU doesn't work - comment/uncomment as needed
+    image: ghcr.io/ggml-org/llama.cpp:full
+    # image: ghcr.io/ggml-org/llama.cpp:full-cuda
+    entrypoint: ["/app/llama-server", "--host", "0.0.0.0", "--port", "8080", "-m", "/models/ggml-model-Q4_K_M.gguf", "--mmproj", "/models/mmproj-model-f16.gguf", "-n", "512"]
     volumes:
       - ./models:/models
     ports:
       - 8000:8080
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # GPU configuration - commenting out until issue is resolved
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+    #   - NVIDIA_DRIVER_CAPABILITIES=all
   
   dozzle:
     container_name: dozzle
