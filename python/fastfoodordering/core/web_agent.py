@@ -446,12 +446,17 @@ class DSPyPlanner:
             "Make sure to describe this step in detail in human-readable natural language. This field should never be 'None'." \
             "Only reference buttons and items directly visible in the 'current_browser_screenshot'. If a required button is not directly visible," \
             "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click." \
-            "If another click is required, you should include that in the next subtask."
+            "If another click is required, you should include that in the next subtask." \
+            "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything."
         )
         tools: list[dspy.Tool] = dspy.InputField(
             desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language."
         )
-        history: dspy.History = dspy.InputField(desc="Previous browser interactions, tool calls, and reasoning")
+        history: dspy.History = dspy.InputField(
+            desc="Previous browser interactions, tool calls, and reasoning." \
+            "PAY ATTENTION TO THIS FIELD AND DO NOT REPEAT ACTIONS THAT ARE NOT WORKING MORE THAN ONCE." \
+            "Try to reason and come up with a different solution if your original idea is not working."
+        )
 
     def __init__(self, configuration: Union[Dict[str, Any], DSPyPlannerConfiguration]):
         self.configuration: DSPyPlannerConfiguration = from_config(configuration, DSPyPlannerConfiguration)
@@ -523,6 +528,7 @@ class BrowserAgentSystem:
             case ToolModes.StageHand: self.tool_caller = StageHandBrowserToolCaller(self.configuration.tools)
             case _: self.tool_caller = None
         self.history = dspy.History(messages=[])
+        self.screenshot = None
     
     def __call__(self, prompt: str):
         return asyncio.run(self.process_request(prompt))
@@ -580,9 +586,10 @@ class BrowserAgentSystem:
             # Take a screenshot of the browser before the tool call
             previous_browser_screenshot = current_browser_screenshot
             current_browser_screenshot = await self.tool_caller.screenshot()
-            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
+            self.screenshot = current_browser_screenshot
             # current_browser_screenshot = cv2.resize(current_browser_screenshot, (300, 200))
-            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.45, fy=0.45, interpolation=cv2.INTER_LINEAR)
+            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.43, fy=0.43, interpolation=cv2.INTER_LINEAR)
+            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             if current_browser_snapshot is not None: print(current_browser_snapshot)
 
@@ -596,13 +603,16 @@ class BrowserAgentSystem:
             )
             previous_tool_call = tool_prediction_response
             previous_tool_call_output = tool_call_result
+            print(tool_call_result)
 
             # Take a screenshot of the browser after the tool was called
             previous_browser_screenshot = current_browser_screenshot
             current_browser_screenshot = await self.tool_caller.screenshot()
-            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
+            self.screenshot = current_browser_screenshot
             # current_browser_screenshot = cv2.resize(current_browser_screenshot, (300, 200))
-            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.45, fy=0.45, interpolation=cv2.INTER_LINEAR)
+            print(current_browser_screenshot.shape)
+            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.43, fy=0.43, interpolation=cv2.INTER_LINEAR)
+            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
 
             # Append the current messages to the history
@@ -700,7 +710,6 @@ if __name__ == "__main__":
                     "args": [
                         "run",
                         "core/web_tools.py",
-                        # "--caps=vision",
                     ],
                     "env": None,
                 },
@@ -720,5 +729,15 @@ if __name__ == "__main__":
 
     ### Example inference
     browser_search_agent(
-        "Order me a burger from McDonald's (https://www.mcdonalds.com/)"
+        "Order me a burger from Burger King (https://www.bk.com/)"
     )
+
+    ### Example inference
+    # browser_search_agent(
+    #     "Order me a ham and cheese sub from Subway (https://www.subway.com/)"
+    # )
+
+    # ### Example inference
+    # browser_search_agent(
+    #     "Order me a burger from McDonald's (https://www.mcdonalds.com/)"
+    # )

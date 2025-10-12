@@ -92,9 +92,10 @@ async def screenshot():
     except Exception as e:
         return str(e)
     
+@mcp.tool
 async def set_location():
     global page
-    page.context.set_geolocation({
+    page._page.context.set_geolocation({
         "latitude": 28.5383,  # Example: Orlando, FL
         "longitude": -81.3792,
         "accuracy": 100  # Accuracy in meters
@@ -113,6 +114,12 @@ async def main():
     stagehand = Stagehand(stagehand_config)
     await stagehand.init()
     page = stagehand.page
+    page._page.context.set_geolocation({
+        "latitude": 28.5383,  # Example: Orlando, FL
+        "longitude": -81.3792,
+        "accuracy": 100  # Accuracy in meters
+    })
+    page._page.context.set_default_timeout(5000)
     await mcp.run_async()
 
 if __name__ == "__main__":
