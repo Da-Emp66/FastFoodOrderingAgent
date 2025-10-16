@@ -19,12 +19,16 @@ export default function SignIn({ onSignIn }: SignInProps) {
 
   const handleContinue = () => {
     if (email.trim()) {
+      // Store username/email in localStorage for API calls
+      localStorage.setItem('username', email.trim());
       onSignIn();
     }
   };
 
   const handleSocialLogin = (provider: string) => {
     console.log(`${provider} login clicked`);
+    // For social login, use a default username or implement proper OAuth
+    localStorage.setItem('username', `${provider.toLowerCase()}_user`);
     onSignIn();
   };
 

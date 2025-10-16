@@ -6,9 +6,12 @@ import {
   Typography,
   InputAdornment,
   Fab,
-  Button
+  Button,
+  Chip,
+  CircularProgress
 } from '@mui/material';
-import { Search, Mic, MicOff, Send } from '@mui/icons-material';
+import { Search, Mic, MicOff, Send, LocationOn } from '@mui/icons-material';
+import { useGeolocation } from '../hooks/useGeolocation';
 
 interface HungryInputProps {
   onSubmit: (query: string) => void;
@@ -18,6 +21,9 @@ export default function HungryInput({ onSubmit }: HungryInputProps) {
   const [query, setQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
+
+  // Get user's geolocation
+  const { location: geolocation, locationName, error: geoError, loading: geoLoading } = useGeolocation();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,10 +99,52 @@ export default function HungryInput({ onSubmit }: HungryInputProps) {
           px: 2
         }}
       >
-        <Box sx={{ textAlign: 'center', mb: 6 }}>
-          <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+        {/* Header with Location */}
+        <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 6 }}>
+          <Box sx={{ flex: 1 }} />
+          <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
             Splash
           </Typography>
+          <Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+            {geoLoading && (
+              <Chip
+                icon={<CircularProgress size={16} sx={{ color: 'white !important' }} />}
+                label="Getting location..."
+                size="small"
+                sx={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+            )}
+            {geolocation && !geoLoading && locationName && (
+              <Chip
+                icon={<LocationOn sx={{ color: 'white !important' }} />}
+                label={locationName}
+                size="small"
+                sx={{
+                  backgroundColor: 'rgba(76, 175, 80, 0.3)',
+                  color: 'white',
+                  fontSize: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.3)'
+                }}
+              />
+            )}
+            {geoError && !geoLoading && (
+              <Chip
+                icon={<LocationOn sx={{ color: 'white !important' }} />}
+                label="No location"
+                size="small"
+                sx={{
+                  backgroundColor: 'rgba(244, 67, 54, 0.3)',
+                  color: 'white',
+                  fontSize: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.3)'
+                }}
+              />
+            )}
+          </Box>
         </Box>
 
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center' }}>
