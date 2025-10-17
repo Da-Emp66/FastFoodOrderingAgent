@@ -26,5 +26,12 @@ dependencies = [
 [project.scripts]
 webagent = "core.serve:main"
 
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [tool.uv]
 package = true
+
+[tool.setuptools]
+packages = ["core", "assets", "configuration"]
