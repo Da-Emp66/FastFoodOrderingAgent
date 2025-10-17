@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
   Box,
   TextField,
@@ -6,25 +6,29 @@ import {
   Typography,
   Container,
   Divider,
-  Paper
-} from '@mui/material';
-import { Google as GoogleIcon, Apple as AppleIcon } from '@mui/icons-material';
+  Paper,
+} from "@mui/material";
+import { Google as GoogleIcon, Apple as AppleIcon } from "@mui/icons-material";
 
 interface SignInProps {
   onSignIn: () => void;
 }
 
 export default function SignIn({ onSignIn }: SignInProps) {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
 
   const handleContinue = () => {
     if (email.trim()) {
+      // Store username/email in localStorage for API calls
+      localStorage.setItem('username', email.trim());
       onSignIn();
     }
   };
 
   const handleSocialLogin = (provider: string) => {
     console.log(`${provider} login clicked`);
+    // For social login, use a default username or implement proper OAuth
+    localStorage.setItem('username', `${provider.toLowerCase()}_user`);
     onSignIn();
   };
 
@@ -32,14 +36,14 @@ export default function SignIn({ onSignIn }: SignInProps) {
     <Container maxWidth="sm">
       <Box
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
           py: 4,
-          px: 2
+          px: 2,
         }}
       >
         <Paper
@@ -47,7 +51,7 @@ export default function SignIn({ onSignIn }: SignInProps) {
           sx={{
             p: 4,
             borderRadius: 3,
-            backgroundColor: 'rgba(255, 255, 255, 0.95)'
+            backgroundColor: "rgba(255, 255, 255, 0.95)",
           }}
         >
           <Typography
@@ -55,21 +59,21 @@ export default function SignIn({ onSignIn }: SignInProps) {
             component="h1"
             gutterBottom
             sx={{
-              fontWeight: 'bold',
-              textAlign: 'center',
-              color: '#333',
-              mb: 1
+              fontWeight: "bold",
+              textAlign: "center",
+              color: "#333",
+              mb: 1,
             }}
           >
-            App name
+            Fast Food Ordering Agent
           </Typography>
 
           <Typography
             variant="body2"
             sx={{
-              textAlign: 'center',
-              color: '#666',
-              mb: 4
+              textAlign: "center",
+              color: "#666",
+              mb: 4,
             }}
           >
             Create an account
@@ -84,10 +88,10 @@ export default function SignIn({ onSignIn }: SignInProps) {
             variant="outlined"
             sx={{
               mb: 3,
-              '& .MuiOutlinedInput-root': {
+              "& .MuiOutlinedInput-root": {
                 borderRadius: 2,
-                backgroundColor: '#f8f9fa'
-              }
+                backgroundColor: "#f8f9fa",
+              },
             }}
           />
 
@@ -98,14 +102,14 @@ export default function SignIn({ onSignIn }: SignInProps) {
             sx={{
               py: 1.5,
               borderRadius: 2,
-              textTransform: 'none',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              backgroundColor: '#000',
+              textTransform: "none",
+              fontSize: "16px",
+              fontWeight: "bold",
+              backgroundColor: "#000",
               mb: 3,
-              '&:hover': {
-                backgroundColor: '#333'
-              }
+              "&:hover": {
+                backgroundColor: "#333",
+              },
             }}
           >
             Continue
@@ -121,19 +125,19 @@ export default function SignIn({ onSignIn }: SignInProps) {
             fullWidth
             variant="outlined"
             startIcon={<GoogleIcon />}
-            onClick={() => handleSocialLogin('Google')}
+            onClick={() => handleSocialLogin("Google")}
             sx={{
               py: 1.5,
               borderRadius: 2,
-              textTransform: 'none',
-              fontSize: '16px',
+              textTransform: "none",
+              fontSize: "16px",
               mb: 2,
-              borderColor: '#ddd',
-              color: '#333',
-              '&:hover': {
-                borderColor: '#ccc',
-                backgroundColor: '#f8f9fa'
-              }
+              borderColor: "#ddd",
+              color: "#333",
+              "&:hover": {
+                borderColor: "#ccc",
+                backgroundColor: "#f8f9fa",
+              },
             }}
           >
             Continue with Google
@@ -143,18 +147,18 @@ export default function SignIn({ onSignIn }: SignInProps) {
             fullWidth
             variant="outlined"
             startIcon={<AppleIcon />}
-            onClick={() => handleSocialLogin('Apple')}
+            onClick={() => handleSocialLogin("Apple")}
             sx={{
               py: 1.5,
               borderRadius: 2,
-              textTransform: 'none',
-              fontSize: '16px',
-              borderColor: '#ddd',
-              color: '#333',
-              '&:hover': {
-                borderColor: '#ccc',
-                backgroundColor: '#f8f9fa'
-              }
+              textTransform: "none",
+              fontSize: "16px",
+              borderColor: "#ddd",
+              color: "#333",
+              "&:hover": {
+                borderColor: "#ccc",
+                backgroundColor: "#f8f9fa",
+              },
             }}
           >
             Continue with Apple
@@ -163,15 +167,15 @@ export default function SignIn({ onSignIn }: SignInProps) {
           <Typography
             variant="caption"
             sx={{
-              display: 'block',
-              textAlign: 'center',
-              color: '#999',
+              display: "block",
+              textAlign: "center",
+              color: "#999",
               mt: 3,
-              px: 2
+              px: 2,
             }}
           >
-            By creating an account, you agree to our
-            Terms of Service and Privacy Policy
+            By creating an account, you agree to our Terms of Service and
+            Privacy Policy
           </Typography>
         </Paper>
       </Box>

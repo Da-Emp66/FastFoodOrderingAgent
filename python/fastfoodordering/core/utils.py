@@ -1,13 +1,18 @@
+from dataclasses import dataclass
 from io import StringIO
 import os
 from pathlib import Path
 import socket
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from box import Box
-from mcp import StdioServerParameters
+import cv2
+from mcp import ClientSession, StdioServerParameters, Tool
+import numpy as np
 from pydantic import BaseModel
 import yaml
+
+FINISH_TOKEN = "<|COMPLETED_OVERALL_TASK|>"
 
 T = type
 _BasicConfigType = Union[Box, dict, str]
@@ -51,8 +56,18 @@ def load_yaml_string(yaml_string: str) -> Any:
     file_buffer.seek(0)
     return yaml.safe_load(file_buffer)
 
-class AgentConfiguration(BaseModel):
-    mcp_servers: Dict[str, StdioServerParameters]
+class MCPUserConfiguration(BaseModel):
+    mcp_servers: Dict[str, StdioServerParameters] = {}
+    custom_tools: List[Callable] = []
 
 class ApplicationConfiguration(BaseModel):
-    agents: Dict[str, AgentConfiguration]
+    agents: Dict[str, Any]
+
+@dataclass
+class McpToolFunctionWrapper:
+    tool: Tool
+    session: ClientSession
+
+    async def __call__(self, **kwargs):
+        result = await self.session.call_tool(name=self.tool.name, arguments=kwargs)
+        return "\n".join(map(lambda text_content: text_content.text, result.content))
