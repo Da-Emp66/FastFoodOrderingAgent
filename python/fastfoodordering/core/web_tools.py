@@ -19,6 +19,7 @@ async def navigate(url: str):
     global page
     try:
         await page.goto(url)
+        await page._page.context.grant_permissions(["geolocation"])
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success"
     except Exception as e:
@@ -87,7 +88,7 @@ async def screenshot():
     try:
         path = "/tmp/fast-food-custom-stagehand-server/tmp.jpg"
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        await page._page.screenshot(path=path)
+        await page._page.screenshot(path=path, full_page=True)
         return path
     except Exception as e:
         return str(e)
@@ -109,12 +110,13 @@ async def main():
         model_api_key=os.getenv("OPENAI_API_KEY"),
         local_browser_launch_options={
             "headless": True,
+            "ignoreDefaultArgs": ['--hide-scrollbars'],
         }
     )
     stagehand = Stagehand(stagehand_config)
     await stagehand.init()
     page = stagehand.page
-    page._page.context.set_geolocation({
+    await page._page.context.set_geolocation({
         "latitude": 28.5383,  # Example: Orlando, FL
         "longitude": -81.3792,
         "accuracy": 100  # Accuracy in meters

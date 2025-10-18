@@ -574,6 +574,7 @@ class BrowserAgentSystem:
                 current_browser_snapshot=current_browser_snapshot,
                 tool_caller=self.tool_caller,
                 history=self.history,
+
             )
 
             if FINISH_TOKEN in subtask:
@@ -588,7 +589,7 @@ class BrowserAgentSystem:
             current_browser_screenshot = await self.tool_caller.screenshot()
             self.screenshot = current_browser_screenshot
             # current_browser_screenshot = cv2.resize(current_browser_screenshot, (300, 200))
-            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.43, fy=0.43, interpolation=cv2.INTER_LINEAR)
+            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
             if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             if current_browser_snapshot is not None: print(current_browser_snapshot)
@@ -611,7 +612,7 @@ class BrowserAgentSystem:
             self.screenshot = current_browser_screenshot
             # current_browser_screenshot = cv2.resize(current_browser_screenshot, (300, 200))
             print(current_browser_screenshot.shape)
-            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.43, fy=0.43, interpolation=cv2.INTER_LINEAR)
+            current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
             if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug: await self.show_browser(current_browser_screenshot)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
 

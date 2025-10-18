@@ -27,12 +27,14 @@ else
     MMPROJ_LOCAL_DIR=$(yq '.VISION_ARGS.local_dir' $CONFIGURATION_FILE)
 
     if [ ! -f "$MODEL_LOCAL_DIR/$MODEL_FILE" ]; then
+        echo "uv run hf download $MODEL_REPOSITORY $MODEL_FILE --local-dir $MODEL_LOCAL_DIR"
         uv run hf download $MODEL_REPOSITORY $MODEL_FILE --local-dir $MODEL_LOCAL_DIR
     else
         echo "Skipping download of $MODEL_REPOSITORY/$MODEL_FILE to $MODEL_LOCAL_DIR/$MODEL_FILE as a file called $MODEL_LOCAL_DIR/$MODEL_FILE already exists."
     fi
     
     if [ ! -f "$MMPROJ_LOCAL_DIR/$MMPROJ_FILE" ]; then
+        echo "uv run hf download $MMPROJ_REPOSITORY $MMPROJ_FILE --local-dir $MMPROJ_LOCAL_DIR"
         uv run hf download $MMPROJ_REPOSITORY $MMPROJ_FILE --local-dir $MMPROJ_LOCAL_DIR
     else
         echo "Skipping download of $MMPROJ_REPOSITORY/$MMPROJ_FILE to $MMPROJ_LOCAL_DIR/$MMPROJ_FILE as a file called $MMPROJ_LOCAL_DIR/$MMPROJ_FILE already exists."
@@ -40,6 +42,6 @@ else
 fi
 
 # Remove the temporary virtual environment
-rm -rf .venv
+# rm -rf .venv
 
 cd $ORIGINAL_PWD
