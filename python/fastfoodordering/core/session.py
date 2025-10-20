@@ -88,15 +88,21 @@ class SessionManager:
                 async with websockets.connect(f"http://{user}-session-{session_id}/active-session/view") as websocket:
                     # Wait for a response from the server
                     response = await asyncio.wait_for(websocket.recv(), timeout=0.5)
-                    
-                yield (
-                    b'--frame\r\n'
-                    b'Content-Type: image/jpeg\r\n\r\n' +
-                    cv2.imencode(".jpeg", cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH))[1].tobytes() +
-                    b'\r\n'
-                )
-                yield b'--frame--\r\n'
-                BACKEND_LOGGER.info("The kvm interface is not opening, closing the stream.")
+                    if len(response) == 0:
+                        yield (
+                            b'--frame\r\n'
+                            b'Content-Type: image/jpeg\r\n\r\n' +
+                            cv2.imencode(".jpeg", cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH))[1].tobytes() +
+                            b'\r\n'
+                        )
+                    else:
+                        yield (
+                            b'--frame\r\n'
+                            b'Content-Type: image/jpeg\r\n\r\n' +
+                            response +
+                            b'\r\n'
+                        )
+                # yield b'--frame--\r\n'
                 break
         except GeneratorExit:
             BACKEND_LOGGER.error("Exiting the generator for browser screenshot.")
