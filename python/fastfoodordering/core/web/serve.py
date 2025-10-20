@@ -1,6 +1,8 @@
 import argparse
 import os
+from pathlib import Path
 import threading
+import cv2
 from dotenv import load_dotenv
 import dspy
 from fastapi import FastAPI, Response, WebSocket
@@ -29,6 +31,8 @@ os.environ["MODEL_SERVER"] = os.getenv("OPENAI_BASE_URL")
 load_dotenv()
 
 MAX_WEBSOCKET_FAILURES = os.environ.get("MAX_WEBSOCKET_FAILURES", 10)
+CURRENT_SCREENSHOT_PATH = os.environ.get("CURRENT_SCREENSHOT_PATH", "/tmp/tmp_browser_screenshot.jpg")
+NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.environ.get("NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH", Path(__file__).parent.parent.parent / "assets" / "no_browser_placeholder.jpg")
 
 # Instantiate globals
 lm = dspy.LM(
@@ -72,13 +76,16 @@ async def stream_browser(websocket: WebSocket):
     n_failures = 0
     while True:
         try:
-            # data = await websocket.receive_text()
-            await websocket.send_text(f"Message received: {data}")
+            if os.path.exists(CURRENT_SCREENSHOT_PATH) and os.path.isfile(CURRENT_SCREENSHOT_PATH):
+                image_path = CURRENT_SCREENSHOT_PATH
+            else:
+                image_path = NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH
+            await websocket.send_bytes(cv2.imencode(".jpeg", cv2.imread(image_path))[1].tobytes())
         except Exception as e:
             if n_failures > MAX_WEBSOCKET_FAILURES:
                 await websocket.close()
             else:
-                print("Error in websocket: {e}")
+                print(f"Error in websocket: {e}")
 
 @app.get("/active-session/status")
 def get_status():

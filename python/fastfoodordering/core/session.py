@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import logging
 from pathlib import Path
@@ -6,6 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 import cv2
 import docker
 from pydantic import BaseModel
+import websockets
 
 from core.utils import from_config
 # from core.web.agent import BrowserAgentSystem
@@ -78,18 +80,24 @@ class SessionManager:
         while True:
             pass
     
-    def browser_screenshot_generator(self, user: str, session_id: str):
+    async def browser_screenshot_generator(self, user: str, session_id: str):
         try:
             # Loop until the client connection exist
             while True:
                 # Check if the camera capture is successfully opened
-                if not video_interface.isOpened():
-                    yield (b'--frame\r\n'
-                        b'Content-Type: image/jpeg\r\n\r\n' +
-                        VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH + b'\r\n')
-                    yield b'--frame--\r\n'
-                    BACKEND_LOGGER.info("The kvm interface is not opening, closing the stream.")
-                    break
+                async with websockets.connect(f"http://{user}-session-{session_id}/active-session/view") as websocket:
+                    # Wait for a response from the server
+                    response = await asyncio.wait_for(websocket.recv(), timeout=0.5)
+                    
+                yield (
+                    b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n' +
+                    cv2.imencode(".jpeg", cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH))[1].tobytes() +
+                    b'\r\n'
+                )
+                yield b'--frame--\r\n'
+                BACKEND_LOGGER.info("The kvm interface is not opening, closing the stream.")
+                break
         except GeneratorExit:
             BACKEND_LOGGER.error("Exiting the generator for browser screenshot.")
         except Exception:

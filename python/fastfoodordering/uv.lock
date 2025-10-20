@@ -697,6 +697,7 @@ dependencies = [
     { name = "selenium" },
     { name = "stagehand" },
     { name = "webdriver-manager" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -718,6 +719,7 @@ requires-dist = [
     { name = "selenium", specifier = ">=4.35.0" },
     { name = "stagehand", specifier = ">=0.5.0" },
     { name = "webdriver-manager", specifier = ">=4.0.2" },
+    { name = "websockets", specifier = ">=15.0.1" },
 ]
 
 [[package]]
