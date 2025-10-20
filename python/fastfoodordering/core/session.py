@@ -1,13 +1,17 @@
-from dataclasses import dataclass
+import enum
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import cv2
+import docker
 from pydantic import BaseModel
 
 from core.utils import from_config
-from core.web_agent import BrowserAgentSystem, ConstrainedBrowserToolCaller, DSPyBrowserToolCaller, ToolModes
+# from core.web.agent import BrowserAgentSystem
+from core.web.tool_calling.constrained_json_tools import ConstrainedBrowserToolCaller
+from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller
+from core.web.tool_calling.interface import ToolModes
 
 BACKEND_LOGGER: logging.Logger = logging.getLogger("BACKEND_LOGGER")
 VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH: str = Path(__file__).parent.parent / "assets" / "video_placeholder.jpg"
@@ -36,13 +40,23 @@ class SessionManagerChatResult(BaseModel):
     session_id: Optional[str] = None
     """If there is a session created for the first time during this chat, the session_id is returned. Otherwise, null."""
 
-@dataclass
-class Session:
+class FoodOrDrinkItem(BaseModel):
+    official_name: str
+    special_instructions: Optional[str] = None
+
+class Session(BaseModel):
     user: str
     session_id: str
     objective: str
-    web_agent: BrowserAgentSystem
-    """Placeholder -- TODO: This should be a reference to an isolated docker container spun up dynamically that can be communicated with."""
+    order: List[FoodOrDrinkItem]
+
+class CompletionStatus(enum.Enum):
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+
+class SessionCompletionStatus(BaseModel):
+    status: CompletionStatus
+    items_ordered: List[FoodOrDrinkItem] = []
 
 class SessionManagerConfiguration(BaseModel):
     tool_mode: ToolModes = ToolModes.Constrained
@@ -50,17 +64,19 @@ class SessionManagerConfiguration(BaseModel):
 
 class SessionManager:
     def __init__(self, configuration: Union[SessionManagerConfiguration, Any]):
-        # self.configuration: SessionManagerConfiguration = from_config(configuration, SessionManagerConfiguration)
-        # match self.configuration.tool_mode:
-        #     case ToolModes.Constrained: self.tool_caller = ConstrainedBrowserToolCaller(self.configuration.tools)
-        #     case ToolModes.DSPy: self.tool_caller = DSPyBrowserToolCaller(self.configuration.tools)
-        #     case _: self.tool_caller = None
+        self.configuration: SessionManagerConfiguration = from_config(configuration, SessionManagerConfiguration)
+        match self.configuration.tool_mode:
+            case ToolModes.Constrained: self.tool_caller = ConstrainedBrowserToolCaller(self.configuration.tools)
+            case ToolModes.DSPy: self.tool_caller = DSPyBrowserToolCaller(self.configuration.tools)
+            case _: self.tool_caller = None
         
         # Outer key is user, inner key is session_id
         self.sessions: Dict[str, Dict[str, Session]] = {}
+        self.client = docker.from_env()
     
     def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
-        pass
+        while True:
+            pass
     
     def browser_screenshot_generator(self, user: str, session_id: str):
         try:

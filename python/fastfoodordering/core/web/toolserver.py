@@ -2,16 +2,11 @@ import asyncio
 import os
 import time
 from typing import Literal
-# import nest_asyncio
 from fastmcp import FastMCP
 from stagehand import Stagehand, StagehandConfig, StagehandPage
-page: StagehandPage = None
-
-# # Patch asyncio to allow nested event loops
-# nest_asyncio.apply()
 
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
-
+page: StagehandPage = None
 mcp = FastMCP("Custom StageHand MCP Server")
 
 @mcp.tool
@@ -94,12 +89,12 @@ async def screenshot():
         return str(e)
     
 @mcp.tool
-async def set_location():
+async def set_location(latitude: float, longitude: float, accuracy: int = 0):
     global page
-    page._page.context.set_geolocation({
-        "latitude": 28.5383,  # Example: Orlando, FL
-        "longitude": -81.3792,
-        "accuracy": 100  # Accuracy in meters
+    await page._page.context.set_geolocation({
+        "latitude": latitude,
+        "longitude": longitude,
+        "accuracy": accuracy,  # Accuracy in meters
     })
 
 async def main():

@@ -3,7 +3,7 @@ import base64
 import os
 from pathlib import Path
 import tempfile
-from typing import List, Optional, Union
+from typing import List, Optional
 import uuid
 import cv2
 from dotenv import load_dotenv
@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 import uvicorn
 
-from core.session_manager_agent import (
+from python.fastfoodordering.core.session import (
     VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH,
     SessionManager,
     SessionManagerChatResult,
