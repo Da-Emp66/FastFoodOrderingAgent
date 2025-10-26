@@ -1,10 +1,18 @@
 import asyncio
+import json
 import os
 import time
 from typing import Literal
 from fastmcp import FastMCP
 from stagehand import Stagehand, StagehandConfig, StagehandPage
 
+# Default browser geolocation is Orlando
+# Accuracy denotes coordinate accuracy in meters.
+BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
+    "latitude": 28.5383,
+    "longitude": -81.3792,
+    "accuracy": 100,
+}'''))
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
 page: StagehandPage = None
 mcp = FastMCP("Custom StageHand MCP Server")
@@ -94,10 +102,11 @@ async def set_location(latitude: float, longitude: float, accuracy: int = 0):
     await page._page.context.set_geolocation({
         "latitude": latitude,
         "longitude": longitude,
-        "accuracy": accuracy,  # Accuracy in meters
+        "accuracy": accuracy,
     })
 
 async def main():
+    # Initialize StageHand webpage
     global page
     stagehand_config = StagehandConfig(
         env="LOCAL",
@@ -111,12 +120,15 @@ async def main():
     stagehand = Stagehand(stagehand_config)
     await stagehand.init()
     page = stagehand.page
-    await page._page.context.set_geolocation({
-        "latitude": 28.5383,  # Example: Orlando, FL
-        "longitude": -81.3792,
-        "accuracy": 100  # Accuracy in meters
-    })
+
+    # Set the browser geolocation
+    await page._page.context.set_geolocation(BROWSER_GEOLOCATION)
+
+    # Ensure we do not wait more than 5 seconds
+    # for failing tool calls
     page._page.context.set_default_timeout(5000)
+
+    # Run the MCP server
     await mcp.run_async()
 
 if __name__ == "__main__":

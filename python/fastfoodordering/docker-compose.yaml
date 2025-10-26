@@ -1,11 +1,11 @@
 services:
-  web-agent: # session-manager?
-    container_name: web-agent
+  session-manager:
+    container_name: session-manager
     build:
       context: .
-      dockerfile: Dockerfile
-    command: ["uv", "run", "webagent"]
-    environment:
-      MODEL_SERVER: ${MODEL_SERVER}
+      dockerfile: core/session/Dockerfile
+    command: ["uv", "run", "session_manager"]
+    env_file:
+      - ../../.env
     ports:
       - 8080:8080

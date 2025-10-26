@@ -6,7 +6,8 @@ import tempfile
 from typing import List, Optional
 import uuid
 import cv2
-from dotenv import load_dotenv
+import docker
+from dotenv import find_dotenv, load_dotenv
 import dspy
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,17 +24,16 @@ from core.session.session import (
     SessionManagerPrompt,
 )
 
-# Environment
-os.environ["MODEL"] = "openai/models/ggml-model-Q4_K_M.gguf"
-os.environ["OPENAI_API_KEY"] = "sk-1234"
-os.environ["OPENAI_BASE_URL"] = "http://localhost:8000"
-os.environ["MODEL_SERVER"] = os.getenv("OPENAI_BASE_URL")
+# Load environment variables
+dotenv_to_use = find_dotenv()
+if dotenv_to_use: print(f"Using .env at path: `{dotenv_to_use}`")
+load_dotenv(dotenv_to_use)
+
+# Update how litellm interacts by default
 litellm.api_base = os.getenv("OPENAI_BASE_URL")
 MODEL_TO_CLIENT_CLASS_MAP.update({litellm.api_base: lambda *args, **kwargs: OpenAICUAClient(*args, **kwargs)})
 
-# Load environment variables
-load_dotenv()
-
+docker_client = docker.from_env()
 session_manager = SessionManager(Path(__file__).parent.parent / "configuration" / "session_manager.yaml")
 app = FastAPI()
 app.add_middleware(
@@ -64,7 +64,7 @@ class BrowserBase64Screenshot(BaseModel):
 def chat(prompt: SimplePrompt) -> SimpleResponse:
     """Obtain a basic response from the LLM."""
     response = litellm.completion(
-        os.getenv("OPENAI_BASE_URL"),
+        os.getenv("MODEL"),
         messages=[{"content": prompt.prompt, "role": "user"}],
         api_key=os.getenv("OPENAI_API_KEY"),
         base_url=os.getenv("OPENAI_BASE_URL"),
@@ -76,8 +76,8 @@ def chat(prompt: SimplePrompt) -> SimpleResponse:
         return SimpleResponse(response=None)
 
 @app.post("/{user}/sessions/chat")
-def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerChatResult:
-    return session_manager(prompt)
+async def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+    return await session_manager(prompt)
 
 @app.get("/{user}/sessions")
 def get_sessions(user: str) -> List[str]:

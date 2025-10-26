@@ -1,28 +1,24 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 import dspy
 
 from core.web.agent import BrowserAgentSystem
 
-# Environment
-os.environ["MODEL"] = "openai/models/ggml-model-Q4_K_M.gguf"
-os.environ["OPENAI_API_KEY"] = "sk-1234"
-os.environ["OPENAI_BASE_URL"] = "http://localhost:8000"
-os.environ["MODEL_SERVER"] = os.getenv("OPENAI_BASE_URL")
-
 # Load environment variables
-load_dotenv()
+dotenv_to_use = find_dotenv()
+if dotenv_to_use: print(f"Using .env at path: `{dotenv_to_use}`")
+load_dotenv(dotenv_to_use)
 
-BROWSER_AGENT_SYSTEM_CONFIG_PATH = os.environ.get(
-    "BROWSER_AGENT_SYSTEM_CONFIG_PATH",
+WEB_AGENT_CONFIG_PATH = os.environ.get(
+    "WEB_AGENT_CONFIG_PATH",
     str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-custom-mcp.yaml")
 )
 
 if __name__ == "__main__":
     lm = dspy.LM(
         "openai/models/ggml-model-Q4_K_M.gguf",
-        api_base=os.getenv("MODEL_SERVER"),
+        api_base=os.getenv("OPENAI_BASE_URL"),
         api_key="sk-1234",
         model_type="chat",
     )
@@ -107,7 +103,7 @@ if __name__ == "__main__":
     #     "browser_visibility_mode": "debug",
     # })
 
-    browser_search_agent = BrowserAgentSystem(BROWSER_AGENT_SYSTEM_CONFIG_PATH)
+    browser_search_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
 
     ### Example inference
     browser_search_agent(

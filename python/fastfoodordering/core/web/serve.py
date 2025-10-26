@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import threading
 import cv2
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 import dspy
 from fastapi import FastAPI, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,14 +22,10 @@ STATUS = SessionCompletionStatus(
 )
 CURRENT_ITEMS_ORDERED = []
 
-# Environment
-os.environ["MODEL"] = "openai/models/ggml-model-Q4_K_M.gguf"
-os.environ["OPENAI_API_KEY"] = "sk-1234"
-os.environ["OPENAI_BASE_URL"] = "http://localhost:8000"
-os.environ["MODEL_SERVER"] = os.getenv("OPENAI_BASE_URL")
-
 # Load environment variables
-load_dotenv()
+dotenv_to_use = find_dotenv()
+if dotenv_to_use: print(f"Using .env at path: `{dotenv_to_use}`")
+load_dotenv(dotenv_to_use)
 
 MAX_WEBSOCKET_FAILURES = os.environ.get("MAX_WEBSOCKET_FAILURES", 10)
 CURRENT_SCREENSHOT_PATH = os.environ.get("CURRENT_SCREENSHOT_PATH", "/tmp/tmp_browser_screenshot.jpg")
@@ -37,8 +33,8 @@ NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.environ.get(
     "NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH",
     str(Path(__file__).parent.parent.parent / "assets" / "no_browser_placeholder.jpg")
 )
-BROWSER_AGENT_SYSTEM_CONFIG_PATH = os.environ.get(
-    "BROWSER_AGENT_SYSTEM_CONFIG_PATH",
+WEB_AGENT_CONFIG_PATH = os.environ.get(
+    "WEB_AGENT_CONFIG_PATH",
     str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-custom-mcp.yaml")
 )
 
@@ -50,7 +46,7 @@ lm = dspy.LM(
     model_type="chat",
 )
 dspy.settings.configure(lm=lm)
-browser_agent = BrowserAgentSystem(BROWSER_AGENT_SYSTEM_CONFIG_PATH)
+browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,

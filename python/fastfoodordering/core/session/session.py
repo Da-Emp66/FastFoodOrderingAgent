@@ -6,12 +6,17 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import cv2
-import docker
 import litellm
 from pydantic import BaseModel
 import websockets
 
-from core.utils import ConstrainedToolCaller, DSPyToolCaller, from_config
+from core.utils import (
+    ConstrainedToolCaller,
+    DSPyToolCaller,
+    extract_final_message_content,
+    from_config,
+    populate_environment_specifications,
+)
 from core.web.tool_calling.interface import ToolModes
 
 BACKEND_LOGGER: logging.Logger = logging.getLogger("BACKEND_LOGGER")
@@ -59,12 +64,17 @@ class SessionCompletionStatus(BaseModel):
     status: CompletionStatus
     items_ordered: List[FoodOrDrinkItem] = []
 
-class SessionManagerConfiguration(BaseModel):
+class SessionManagerResponseConfiguration(BaseModel):
     response_system_prompt: str = """You are a helpful assistant who specializes in helping users place food orders at restaurants nearby. Respond to the user based on the user's request. 
     For example, if the user asks for help finding a restaurant, say something like "Okay, I will help you look for a restaurant nearby." 
     If the user asks for help placing an order, say "I will work to schedule an order" at the restaurant of their choice."""
+    max_tokens: int = 200
+
+class SessionManagerConfiguration(BaseModel):
+    response: SessionManagerResponseConfiguration = SessionManagerResponseConfiguration()
     tool_mode: ToolModes = ToolModes.Constrained
     tools: Optional[Dict[str, Any]] = None
+    web_agent_spec: Dict[str, Any] = {}
 
 class SessionManager:
     def __init__(self, configuration: Union[SessionManagerConfiguration, Any]):
@@ -76,21 +86,21 @@ class SessionManager:
         
         # Outer key is user, inner key is session_id
         self.sessions: Dict[str, Dict[str, Session]] = {}
-        self.client = docker.from_env()
     
     async def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
         await self.tool_caller.initialize_tools()
         # Determine what to do and inform the user
         response = litellm.completion(
-            os.getenv("OPENAI_BASE_URL"),
+            os.getenv("MODEL"),
             messages=[
-                {"content": self.configuration.response_system_prompt, "role": "system"},
+                {"content": self.configuration.response.response_system_prompt, "role": "system"},
                 {"content": prompt.prompt, "role": "user"},
             ],
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL"),
-            max_tokens=200,
-        )
+            max_tokens=self.configuration.response.max_tokens,
+        ).choices[0].message.content
+        response = extract_final_message_content(response)
         # Determine and call the tool
         tool_prediction_response, tool_call_result = await self.tool_caller.determine_and_call_tools(
             user=prompt.user,
@@ -102,14 +112,23 @@ class SessionManager:
         previous_tool_call = tool_prediction_response
         previous_tool_call_output = tool_call_result
         print(tool_call_result)
-        return response
+        return SessionManagerChatResult(
+            response=response,
+            session_id=None,
+        )
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
         try:
+            container_spec = populate_environment_specifications(
+                self.configuration.web_agent_spec,
+                _DYN_WEB_AGENT_USER=user,
+                _DYN_WEB_AGENT_SESSION_ID=session_id,
+            )
+            session_url = f"http://{container_spec['name']}:9000" # TODO: Don't hardcode this port
             # Loop until the client connection exist
             while True:
                 # Check if the camera capture is successfully opened
-                async with websockets.connect(f"http://{user}-session-{session_id}/active-session/view") as websocket:
+                async with websockets.connect(f"{session_url}/active-session/view") as websocket:
                     # Wait for a response from the server
                     response = await asyncio.wait_for(websocket.recv(), timeout=0.5)
                     if len(response) == 0:

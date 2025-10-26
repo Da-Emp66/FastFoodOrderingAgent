@@ -26,7 +26,8 @@ dependencies = [
 ]
 
 [project.scripts]
-webagent = "core.serve:main"
+session_manager = "core.session.serve:main"
+web_agent = "core.web.serve:main"
 
 [build-system]
 requires = ["setuptools", "wheel"]

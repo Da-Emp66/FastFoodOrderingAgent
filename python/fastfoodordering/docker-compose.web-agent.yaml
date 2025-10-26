@@ -1,0 +1,12 @@
+services:
+  web-agent:
+    image: ${WEB_AGENT_IMAGE:-web-agent}:${WEB_AGENT_TAG:-latest}
+    container_name: web-agent
+    build:
+      context: .
+      dockerfile: core/web/Dockerfile
+    command: ["uv", "run", "web_agent"]
+    env_file:
+      - ../../.env
+    ports:
+      - 9000:9000

@@ -67,9 +67,29 @@ def load_yaml_string(yaml_string: str) -> Any:
     file_buffer.seek(0)
     return yaml.safe_load(file_buffer)
 
+def populate_environment_specifications(spec: Union[str, Dict[str, Any]], **kwargs):
+    """Recursively populates a dictionary's keys and values or populates a string with environment variables."""
+    if type(spec) == str:
+        previous = os.environ
+        os.environ.update(kwargs)
+        value = os.path.expandvars(spec)
+        os.environ = previous
+        return value
+    elif type(spec) == dict:
+        return {
+            populate_environment_specifications(key, kwargs=kwargs): populate_environment_specifications(val, kwargs=kwargs)
+            for key, val in spec
+        }
+    else:
+        return spec
+
+def extract_final_message_content(response: str):
+    """Returns only the final response, with all proper thinking tokens and sections removed."""
+    return response.split("|>")[-1]
+
 class CustomToolSpecification(BaseModel):
-    function_name: str
-    """The name of the function."""
+    function_name: Optional[str]
+    """The name of the function. None if it references the null function, but this must be specified explicitly."""
     import_spec: Optional[str] = None
     """The filepath to the file the function is defined in."""
 
@@ -90,14 +110,19 @@ class McpToolFunctionWrapper:
         result = await self.session.call_tool(name=self.tool.name, arguments=kwargs)
         return "\n".join(map(lambda text_content: text_content.text, result.content))
 
+async def null_function():
+    """The function that gets called when the model chooses not to call a function."""
+    return
+
 def find_or_return_function(function_spec: LocalToolSpec):
     if type(function_spec) == str:
         function_spec = CustomToolSpecification(function_name=function_spec)
-    if isinstance(function_spec, callable):
+    if isinstance(function_spec, Callable):
         return function_spec
     elif isinstance(function_spec, CustomToolSpecification):
         function_name = function_spec.function_name
         filepath = function_spec.import_spec
+        if function_name is None: return null_function
         if function_spec.import_spec is not None:
             spec = importlib.util.spec_from_file_location("dynamic_module", filepath)
             module = importlib.util.module_from_spec(spec)
@@ -126,10 +151,10 @@ def find_or_return_function(function_spec: LocalToolSpec):
 class MockMCPToolSchemaDefinition:
     inputSchema: dict[str, Any] = {}
 
-    def __init__(self, function_ref: callable):
+    def __init__(self, function_ref: Callable):
         self.inputSchema = self.function_args_to_schema(function_ref)
     
-    def function_args_to_schema(self, func: callable):
+    def function_args_to_schema(self, func: Callable):
         sig = signature(func)
         fields = {}
         for name, param in sig.parameters.items():
@@ -258,8 +283,6 @@ class ConstrainedToolCaller(ToolCaller):
             base_url=os.getenv("OPENAI_BASE_URL"),
             sampling_params=SamplingParams(**self.configuration.tool_generation_params.sampling_params),
         )
-        with guidance_system():
-            self.lm += self.configuration.tool_system_prompt
 
     async def initialize_tools(self):
         tools = {}
@@ -269,8 +292,14 @@ class ConstrainedToolCaller(ToolCaller):
         for _session_name, session in self.mcp_sessions.items():
             session_tools = (await session.list_tools()).tools
             tools.update({tool.name: McpToolFunctionWrapper(tool=tool, session=session) for tool in session_tools})
-        tools.update({tool.__name__: BasicToolFunctionWrapper(tool) for tool in self.configuration.custom_tools})
+        for tool in self.configuration.custom_tools:
+            tool = find_or_return_function(tool)
+            tools.update({tool.__name__: BasicToolFunctionWrapper(tool)})
         self.tools = tools
+        tool_options = list(self.tools.keys())
+        with guidance_system():
+            self.lm += self.configuration.tool_system_prompt \
+                .replace("{tool_options}", yaml.safe_dump(tool_options))
 
     async def determine_and_call_tools(self, **kwargs):
         tool_options = list(self.tools.keys())

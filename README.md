@@ -9,7 +9,7 @@ A prototype application enabling users to issue voice or text commands to create
     . scripts/install-cuda.sh
     . scripts/install-docker.sh
     . scripts/download-llamacpp-gguf.sh
-    docker compose build
+    . scripts/build-docker.sh
     docker compose up -d
 
 Then go to http://localhost:10000/ to view application logs.
@@ -32,6 +32,7 @@ Then go to http://localhost:10000/ to view application logs.
 ### Docker Build
 
     cd python/fastfoodordering
+    docker compose -f "docker-compose.web-agent.yaml" build
     docker compose build
 
 ### Local Development
