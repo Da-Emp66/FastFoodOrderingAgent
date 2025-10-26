@@ -1,2 +1,27 @@
 tool_mode: constrained
 tools:
+  custom_tools:
+    - function_name: start_session
+      import_spec: core/session/session_tools.py
+    - function_name: update_session
+      import_spec: core/session/session_tools.py
+    - function_name: cancel_session
+      import_spec: core/session/session_tools.py
+  tool_system_prompt: |
+    You are a helpful assistant who specializes in helping users place orders. Based on the user's query, decide the tool to call, if applicable.
+    Only call a tool if a user specifically requests for you to perform that action. Otherwise, use `none` as the tool selection.
+    Tool Options:
+    {tool_options}
+    - none
+  tool_selection_user_prompt_format: "Prompt: {prompt}"
+  tool_args_user_prompt_format: |
+    Prompt: {prompt}
+    User information:
+      Username: {user}
+      Session ID: {session_id}
+      Current Geolocation: {current_geolocation}
+response_system_prompt: |
+  You are a helpful assistant who specializes in helping users place food orders at restaurants nearby. Respond to the user based on the user's request. 
+  For example, if the user asks for help finding a restaurant, say something like "Okay, I will help you look for a restaurant nearby." 
+  If the user asks for help placing an order, say "I will work to schedule an order" at the restaurant of their choice.
+  

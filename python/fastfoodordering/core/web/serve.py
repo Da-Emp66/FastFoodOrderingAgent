@@ -6,10 +6,11 @@ import cv2
 from dotenv import load_dotenv
 import dspy
 from fastapi import FastAPI, Response, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from core.web.agent import BrowserAgentSystem
-from core.session import CompletionStatus, Session, SessionCompletionStatus
+from core.session.session import CompletionStatus, Session, SessionCompletionStatus
 
 ME = Session(
     user=os.environ.get("SESSION_USER"),
@@ -32,7 +33,14 @@ load_dotenv()
 
 MAX_WEBSOCKET_FAILURES = os.environ.get("MAX_WEBSOCKET_FAILURES", 10)
 CURRENT_SCREENSHOT_PATH = os.environ.get("CURRENT_SCREENSHOT_PATH", "/tmp/tmp_browser_screenshot.jpg")
-NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.environ.get("NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH", Path(__file__).parent.parent.parent / "assets" / "no_browser_placeholder.jpg")
+NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.environ.get(
+    "NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH",
+    str(Path(__file__).parent.parent.parent / "assets" / "no_browser_placeholder.jpg")
+)
+BROWSER_AGENT_SYSTEM_CONFIG_PATH = os.environ.get(
+    "BROWSER_AGENT_SYSTEM_CONFIG_PATH",
+    str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-custom-mcp.yaml")
+)
 
 # Instantiate globals
 lm = dspy.LM(
@@ -42,33 +50,15 @@ lm = dspy.LM(
     model_type="chat",
 )
 dspy.settings.configure(lm=lm)
-### Constrained inference
-browser_agent = BrowserAgentSystem({
-    "tool_mode": "constrained",
-    "tools": {
-        "mcp_servers": {
-            "playwright": {
-                "command": "uv",
-                "args": [
-                    "run",
-                    "core/web/toolserver.py",
-                ],
-                "env": None,
-            },
-        },
-        "browser_visibility": {
-            "screenshot_tool_name": "screenshot",
-            # "snapshot_tool_name": "browser_snapshot",
-        },
-    },
-    "planner": {
-        "visibility_settings": {
-            "tools_visible": True,
-        },
-    },
-    "browser_visibility_mode": "debug",
-})
+browser_agent = BrowserAgentSystem(BROWSER_AGENT_SYSTEM_CONFIG_PATH)
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # List of allowed origins
+    allow_credentials=True, # Allow cookies and credentials
+    allow_methods=["*"], # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"], # Allow all headers
+)
 
 @app.websocket("/active-session/view")
 async def stream_browser(websocket: WebSocket):

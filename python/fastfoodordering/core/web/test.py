@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 import dspy
 
@@ -12,6 +13,11 @@ os.environ["MODEL_SERVER"] = os.getenv("OPENAI_BASE_URL")
 
 # Load environment variables
 load_dotenv()
+
+BROWSER_AGENT_SYSTEM_CONFIG_PATH = os.environ.get(
+    "BROWSER_AGENT_SYSTEM_CONFIG_PATH",
+    str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-custom-mcp.yaml")
+)
 
 if __name__ == "__main__":
     lm = dspy.LM(
@@ -75,31 +81,33 @@ if __name__ == "__main__":
     # })
 
     ### Constrained inference
-    browser_search_agent = BrowserAgentSystem({
-        "tool_mode": "constrained",
-        "tools": {
-            "mcp_servers": {
-                "playwright": {
-                    "command": "uv",
-                    "args": [
-                        "run",
-                        "core/web/toolserver.py",
-                    ],
-                    "env": None,
-                },
-            },
-            "browser_visibility": {
-                "screenshot_tool_name": "screenshot",
-                # "snapshot_tool_name": "browser_snapshot",
-            },
-        },
-        "planner": {
-            "visibility_settings": {
-                "tools_visible": True,
-            },
-        },
-        "browser_visibility_mode": "debug",
-    })
+    # browser_search_agent = BrowserAgentSystem({
+    #     "tool_mode": "constrained",
+    #     "tools": {
+    #         "mcp_servers": {
+    #             "playwright": {
+    #                 "command": "uv",
+    #                 "args": [
+    #                     "run",
+    #                     "core/web/toolserver.py",
+    #                 ],
+    #                 "env": None,
+    #             },
+    #         },
+    #         "browser_visibility": {
+    #             "screenshot_tool_name": "screenshot",
+    #             # "snapshot_tool_name": "browser_snapshot",
+    #         },
+    #     },
+    #     "planner": {
+    #         "visibility_settings": {
+    #             "tools_visible": True,
+    #         },
+    #     },
+    #     "browser_visibility_mode": "debug",
+    # })
+
+    browser_search_agent = BrowserAgentSystem(BROWSER_AGENT_SYSTEM_CONFIG_PATH)
 
     ### Example inference
     browser_search_agent(

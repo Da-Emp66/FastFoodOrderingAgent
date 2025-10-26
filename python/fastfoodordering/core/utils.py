@@ -1,5 +1,7 @@
 import abc
 from dataclasses import dataclass
+import importlib
+from inspect import signature, Parameter
 from io import StringIO
 import json
 import os
@@ -7,15 +9,18 @@ from pathlib import Path
 import socket
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+import typing_extensions
 from box import Box
 import dspy
 from guidance import (
     json as generate_constrained_json,
     user as guidance_user,
+    system as guidance_system,
     assistant as guidance_assistant,
 )
+from guidance.models import OpenAI as GuidanceOpenAI
 from mcp import ClientSession, ClientSessionGroup, StdioServerParameters, Tool
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 import yaml
 
 FINISH_TOKEN = "<|COMPLETED_OVERALL_TASK|>"
@@ -62,9 +67,17 @@ def load_yaml_string(yaml_string: str) -> Any:
     file_buffer.seek(0)
     return yaml.safe_load(file_buffer)
 
+class CustomToolSpecification(BaseModel):
+    function_name: str
+    """The name of the function."""
+    import_spec: Optional[str] = None
+    """The filepath to the file the function is defined in."""
+
+LocalToolSpec = Union[str, CustomToolSpecification, Callable]
+
 class MCPUserConfiguration(BaseModel):
     mcp_servers: Dict[str, StdioServerParameters] = {}
-    custom_tools: List[Callable] = []
+    custom_tools: List[LocalToolSpec] = []
 
 class ApplicationConfiguration(BaseModel):
     agents: Dict[str, Any]
@@ -77,9 +90,74 @@ class McpToolFunctionWrapper:
         result = await self.session.call_tool(name=self.tool.name, arguments=kwargs)
         return "\n".join(map(lambda text_content: text_content.text, result.content))
 
+def find_or_return_function(function_spec: LocalToolSpec):
+    if type(function_spec) == str:
+        function_spec = CustomToolSpecification(function_name=function_spec)
+    if isinstance(function_spec, callable):
+        return function_spec
+    elif isinstance(function_spec, CustomToolSpecification):
+        function_name = function_spec.function_name
+        filepath = function_spec.import_spec
+        if function_spec.import_spec is not None:
+            spec = importlib.util.spec_from_file_location("dynamic_module", filepath)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if hasattr(module, function_name):
+                return getattr(module, function_name)
+            else:
+                raise AttributeError(f"Function '{function_name}' not found in {filepath}")
+        else:
+            if function_name in globals():
+                try:
+                    return callable(globals().get(function_name))
+                except Exception as e:
+                    NotImplementedError(
+                        f"Tool with name `{function_name}` exists but is not callable. "
+                        f"Error that indicates this: {e}"
+                    )
+            else:
+                raise NotImplementedError(
+                    f"Function name {function_name} not defined in `globals()`. "
+                    "Did you mean to pass an `import_spec` to the filepath where that function is defined in your `CustomToolSpecification`?"
+                )
+    else:
+        raise NotImplementedError(f"Function specification of type `{type(function_spec)}` not yet supported.")
+
+class MockMCPToolSchemaDefinition:
+    inputSchema: dict[str, Any] = {}
+
+    def __init__(self, function_ref: callable):
+        self.inputSchema = self.function_args_to_schema(function_ref)
+    
+    def function_args_to_schema(self, func: callable):
+        sig = signature(func)
+        fields = {}
+        for name, param in sig.parameters.items():
+            annotation = param.annotation if param.annotation != Parameter.empty else Any
+            default = param.default if param.default != Parameter.empty else ...
+            fields[name] = (annotation, default)
+        return create_model(f"{func.__name__.capitalize()}Schema", **fields).model_json_schema()
+
+class BasicToolFunctionWrapper:
+    tool: Optional[MockMCPToolSchemaDefinition] = None
+
+    def __init__(self, function: LocalToolSpec):
+        self.function_ref = find_or_return_function(function)
+        self.tool = MockMCPToolSchemaDefinition(self.function_ref)
+    
+    async def __call__(self, **kwargs):
+        result = await self.function_ref(**kwargs)
+        return result
+    
+UsableTool = Union[
+    McpToolFunctionWrapper,
+    BasicToolFunctionWrapper,
+    Any,
+]
+
 class ToolCaller(metaclass=abc.ABCMeta):
     configuration: Optional[_BasicConfigType] = None
-    tools: Dict[str, Any] = {}
+    tools: Dict[str, UsableTool] = {}
     async def initialize_tools(self): pass
     @abc.abstractmethod
     async def determine_and_call_tools(self, **kwargs) -> Tuple[str, str]: raise NotImplementedError()
@@ -90,7 +168,7 @@ class DSPyToolCaller(ToolCaller):
         self.group = ClientSessionGroup(component_name_hook=lambda name, server_info: f"{(server_info.name)}_{name}")
         self.mcp_sessions = { server_name: (await self.group.connect_to_server(server_params)) for server_name, server_params in self.configuration.mcp_servers.items() }
         # Initialize DSPy tools
-        tools = [dspy.Tool(tool_function) for tool_function in self.configuration.custom_tools]
+        tools = [dspy.Tool(find_or_return_function(tool_function)) for tool_function in self.configuration.custom_tools]
         for _session_name, session in self.mcp_sessions.items():
             session_tools = (await session.list_tools()).tools
             dspy_session_tools = [dspy.Tool.from_mcp_tool(session, tool) for tool in session_tools]
@@ -145,7 +223,44 @@ class DSPyToolCaller(ToolCaller):
         print(tool_call_result)
         return str({"tool": selected_tool_name, "args": selected_tool_args}), tool_call_result
 
+class SamplingParams(typing_extensions.TypedDict):
+    """Mirrors `from guidance._schema import SamplingParams` but with Python3.10 Pydantic support."""
+    top_p: typing_extensions.NotRequired[float] = None
+    top_k: typing_extensions.NotRequired[int] = None
+    min_p: typing_extensions.NotRequired[float] = None
+    repetition_penalty: typing_extensions.NotRequired[float] = None
+    
+class ConstrainedToolCallerGenerationConfiguration(BaseModel):
+    sampling_params: SamplingParams = SamplingParams()
+    temperature: float = 0.0
+
+class ConstrainedToolCallerConfiguration(MCPUserConfiguration):
+    tool_system_prompt: str
+    tool_selection_user_prompt_format: str
+    tool_args_user_prompt_format: str
+    tool_generation_params: ConstrainedToolCallerGenerationConfiguration = ConstrainedToolCallerGenerationConfiguration(
+        sampling_params=SamplingParams(top_p=0.9),
+        temperature=0.7,
+    )
+
 class ConstrainedToolCaller(ToolCaller):
+    def __init__(self, configuration: ConstrainedToolCallerConfiguration):
+        if isinstance(configuration, ConstrainedToolCallerConfiguration):
+            self.configuration: ConstrainedToolCallerConfiguration = configuration
+        else:
+            self.configuration: ConstrainedToolCallerConfiguration = from_config(configuration, ConstrainedToolCallerConfiguration)
+
+        self.tools = {}
+        self.lm = GuidanceOpenAI(
+            "o1-" + os.getenv("MODEL"),
+            echo=True,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            sampling_params=SamplingParams(**self.configuration.tool_generation_params.sampling_params),
+        )
+        with guidance_system():
+            self.lm += self.configuration.tool_system_prompt
+
     async def initialize_tools(self):
         tools = {}
         # Create the MCP session and initialize tools
@@ -154,29 +269,33 @@ class ConstrainedToolCaller(ToolCaller):
         for _session_name, session in self.mcp_sessions.items():
             session_tools = (await session.list_tools()).tools
             tools.update({tool.name: McpToolFunctionWrapper(tool=tool, session=session) for tool in session_tools})
-        # TODO:
-        # for tool in self.configuration.custom_tools: ...
+        tools.update({tool.__name__: BasicToolFunctionWrapper(tool) for tool in self.configuration.custom_tools})
         self.tools = tools
 
     async def determine_and_call_tools(self, **kwargs):
+        tool_options = list(self.tools.keys())
         with guidance_user():
-            user_prompt = self.configuration.tool_selection_user_prompt_format
+            user_prompt = self.configuration.tool_selection_user_prompt_format \
+                .replace("{tool_options}", yaml.safe_dump(tool_options))
             for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
             self.lm += user_prompt
         name = None
         with guidance_assistant():
             self.lm += generate_constrained_json(name='tool_name_json', schema={
-                'properties': {
-                    'tool_name': {
-                        'enum': list(self.tools.keys()),
-                        'title': 'Tool Name',
-                        'type': 'string'
-                    }
+                    'properties': {
+                        'tool_name': {
+                            'enum': list(self.tools.keys()),
+                            'title': 'Tool Name',
+                            'type': 'string'
+                        }
+                    },
+                    'required': ['tool_name'],
+                    'title': 'ToolName',
+                    'type': 'object',
                 },
-                'required': ['tool_name'],
-                'title': 'ToolName',
-                'type': 'object',
-            })
+                temperature=self.configuration.tool_generation_params.temperature,
+                # logit_bias=logit_bias,
+            )
             name = json.loads(self.lm["tool_name_json"])["tool_name"]
         with guidance_user():
             user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
@@ -186,7 +305,11 @@ class ConstrainedToolCaller(ToolCaller):
             if name in self.tools:
                 selected_tool = self.tools[name]
                 print(selected_tool.tool.inputSchema)
-                self.lm += generate_constrained_json(name="generated_args", schema=selected_tool.tool.inputSchema)
+                self.lm += generate_constrained_json(
+                    name="generated_args",
+                    schema=selected_tool.tool.inputSchema,
+                    temperature=self.configuration.tool_generation_params.temperature,
+                )
                 args = json.loads(self.lm["generated_args"])
                 selected_tool_representation = str({"tool": name, "args": args})
                 print(selected_tool_representation)
@@ -196,5 +319,8 @@ class ConstrainedToolCaller(ToolCaller):
                 except Exception as e:
                     return selected_tool_representation, str(e)
             else:
-                return str({"tool": name, "args": {}}), f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}"
+                return (
+                    str({"tool": name, "args": {}}),
+                    f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}"
+                )
     

@@ -9,13 +9,14 @@ import cv2
 from dotenv import load_dotenv
 import dspy
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import litellm
 from pydantic import BaseModel
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 import uvicorn
 
-from python.fastfoodordering.core.session import (
+from core.session.session import (
     VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH,
     SessionManager,
     SessionManagerChatResult,
@@ -35,6 +36,13 @@ load_dotenv()
 
 session_manager = SessionManager(Path(__file__).parent.parent / "configuration" / "session_manager.yaml")
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # List of allowed origins
+    allow_credentials=True, # Allow cookies and credentials
+    allow_methods=["*"], # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"], # Allow all headers
+)
 
 class SimplePrompt(BaseModel):
     prompt: str
@@ -60,6 +68,7 @@ def chat(prompt: SimplePrompt) -> SimpleResponse:
         messages=[{"content": prompt.prompt, "role": "user"}],
         api_key=os.getenv("OPENAI_API_KEY"),
         base_url=os.getenv("OPENAI_BASE_URL"),
+        max_tokens=200,
     )
     try:
         return SimpleResponse(response=response.choices.pop(0).message.content)
@@ -126,6 +135,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=9000)
+    parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     main(args)
