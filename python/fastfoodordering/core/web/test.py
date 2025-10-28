@@ -14,6 +14,7 @@ WEB_AGENT_CONFIG_PATH = os.environ.get(
     "WEB_AGENT_CONFIG_PATH",
     str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-custom-mcp.yaml")
 )
+print(f"Using WEB_AGENT_CONFIG_PATH at {WEB_AGENT_CONFIG_PATH}")
 
 if __name__ == "__main__":
     lm = dspy.LM(

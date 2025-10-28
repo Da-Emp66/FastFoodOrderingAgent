@@ -16,6 +16,8 @@ import yaml
 from core.utils import (
     ConstrainedToolCaller,
     ConstrainedToolCallerConfiguration,
+    GeneratedTool,
+    GeneratedToolSpec,
     from_config,
 )
 from core.web.interface import BrowserVisibilityConfiguration
@@ -27,16 +29,17 @@ class ConstrainedBrowserToolCallerConfiguration(ConstrainedToolCallerConfigurati
 class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
     def __init__(self, configuration: Union[Dict[str, Any], ConstrainedBrowserToolCallerConfiguration]):
         self.configuration: ConstrainedBrowserToolCallerConfiguration = from_config(configuration, ConstrainedBrowserToolCallerConfiguration)
+        print("Instantiating ConstrainedBrowserToolCaller...")
         super().__init__(self.configuration)
 
-    async def determine_and_call_tools(
+    async def determine_tool(
         self,
         overall_goal,
         subtask,
         previous_browser_screenshot = None,
         current_browser_screenshot = None,
         current_browser_snapshot = None
-    ):
+    ) -> GeneratedTool:
         tool_options = list(self.tools.keys())
         cv2.imwrite("tmp.jpg", current_browser_screenshot)
         with guidance_user():
@@ -82,16 +85,16 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                 args = json.loads(self.lm["generated_args"])
                 selected_tool_representation = str({"tool": name, "args": args})
                 print(selected_tool_representation)
-                try:
-                    result = await selected_tool(**args)
-                    return selected_tool_representation, result
-                except Exception as e:
-                    return selected_tool_representation, str(e)
             else:
-                return (
-                    str({"tool": name, "args": {}}),
-                    f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}"
+                raise ValueError(f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}")
+            
+            return GeneratedTool(
+                usable=selected_tool,
+                spec=GeneratedToolSpec(
+                    tool=name,
+                    args=args,
                 )
+            )
     
     async def screenshot(self) -> Optional[cv2.typing.MatLike]:
         screenshot_tool = self.tools.get(self.configuration.browser_visibility.screenshot_tool_name, None)

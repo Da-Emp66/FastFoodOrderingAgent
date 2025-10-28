@@ -8,10 +8,12 @@ import numpy as np
 from stagehand import Stagehand, StagehandConfig
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 from core.web.tool_calling.interface import BrowserToolCaller
+from core.utils import deprecated
 
 litellm.api_base = os.getenv("OPENAI_BASE_URL")
 MODEL_TO_CLIENT_CLASS_MAP.update({litellm.api_base: lambda *args, **kwargs: OpenAICUAClient(*args, **kwargs)})
 
+@deprecated("`determine_and_call_tools` not yet adjusted.")
 class StageHandBrowserToolCaller(BrowserToolCaller):
     def __init__(self, configuration: Optional[Any] = None):
         # Stagehand

@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import copy
 import json
 import os
@@ -6,13 +7,13 @@ from pathlib import Path
 import threading
 import cv2
 from dotenv import find_dotenv, load_dotenv
-import dspy
 from fastapi import FastAPI, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from core.web.agent import BrowserAgentSystem
 from core.session.session import CompletionStatus, ObjectiveSpecification, Session, SessionCompletionStatus
+from core.utils import FINISH_TOKEN
 
 class SessionInProgress:
     original_spec: Session
@@ -44,8 +45,15 @@ class SessionInProgress:
         print(f"Current `{key}` for session `{self.current_spec.session_id}` changed to {val}")
         super().__setattr__(key, val)
 
-    def __call__(self, *args, **kwds):
-        raise NotImplementedError()
+    async def __call__(self, *args, **kwds):
+        print("In call", flush=True)
+        async for task_result in self.browser_agent.iterate_task():
+            print("iteration", flush=True)
+            if task_result == FINISH_TOKEN:
+                print(FINISH_TOKEN)
+                return
+            else:
+                print(task_result)
 
 # Load environment variables
 dotenv_to_use = find_dotenv()
@@ -62,15 +70,9 @@ WEB_AGENT_CONFIG_PATH = os.environ.get(
     "WEB_AGENT_CONFIG_PATH",
     str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-custom-mcp.yaml")
 )
+print(f"Using WEB_AGENT_CONFIG_PATH at {WEB_AGENT_CONFIG_PATH}")
 
 # Instantiate globals
-lm = dspy.LM(
-    "openai/models/ggml-model-Q4_K_M.gguf",
-    api_base=os.getenv("MODEL_SERVER"),
-    api_key="sk-1234",
-    model_type="chat",
-)
-dspy.settings.configure(lm=lm)
 this_session = SessionInProgress(
     user=os.environ.get("SESSION_USER"),
     session_id=os.environ.get("SESSION_ID"),
@@ -126,13 +128,14 @@ def update_overall_goal(session: Session):
     return Response(status_code=200)
 
 def main(args):
-    main_loop = threading.Thread(target=this_session)
+    main_loop = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": args.host, "port": args.port})
     main_loop.start()
-    uvicorn.run(
-        app, 
-        host=args.host,
-        port=args.port,
-    )
+    # uvicorn.run(
+    #     app, 
+    #     host=args.host,
+    #     port=args.port,
+    # )
+    asyncio.run(this_session())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

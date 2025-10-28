@@ -17,7 +17,6 @@ class ToolModes(str, enum.Enum):
     StageHand = "stagehand"
 
 class BrowserToolCaller(ToolCaller):
-    @abc.abstractmethod
     async def determine_and_call_tools(
         self,
         overall_goal: str,
@@ -26,7 +25,7 @@ class BrowserToolCaller(ToolCaller):
         current_browser_screenshot: Optional[cv2.typing.MatLike] = None,
         current_browser_snapshot: Optional[str] = None
     ) -> Tuple[str, str]:
-        return super().determine_and_call_tools(
+        return await super().determine_and_call_tools(
             overall_goal=overall_goal,
             subtask=subtask,
             previous_browser_screenshot=previous_browser_screenshot,

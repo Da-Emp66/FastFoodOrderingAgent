@@ -5,8 +5,14 @@ services:
     build:
       context: .
       dockerfile: core/web/Dockerfile
-    command: ["uv", "run", "web_agent"]
     env_file:
       - ../../.env
     ports:
       - 9000:9000
+    environment:
+      - SESSION_USER=testuser
+      - SESSION_ID=test_id
+      - SESSION_OBJECTIVE='Go to burger king and order a burger'
+      - OPENAI_BASE_URL=http://host.docker.internal:8000
+    extra_hosts:
+      - host.docker.internal:host-gateway

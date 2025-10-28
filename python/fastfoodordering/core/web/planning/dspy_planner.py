@@ -101,10 +101,23 @@ class DSPyPlanner:
         )
         
         async for chunk in output_stream:
+            # print(chunk)
             if isinstance(chunk, dspy.streaming.StreamResponse):
                 print(chunk.chunk, end="", flush=True)
             elif isinstance(chunk, dspy.Prediction):
                 task_planning_response = chunk
                 subtask = task_planning_response.next_subtask
+
+        # subtask = self.next_step_planner(
+        #     previous_browser_screenshot=None if not self.configuration.visibility_settings.previous_screenshot_visible else dspy_image_or_blank(previous_browser_screenshot),
+        #     current_browser_screenshot=None if not self.configuration.visibility_settings.current_screenshot_visible else dspy_image_or_blank(current_browser_screenshot),
+        #     overall_goal=overall_goal if self.configuration.visibility_settings.overall_goal_visible else None,
+        #     previous_subtask=previous_subtask if self.configuration.visibility_settings.previous_subtask_visible else None,
+        #     previous_tool_call=previous_tool_call if self.configuration.visibility_settings.previous_tool_call_visible else None,
+        #     previous_tool_call_output=previous_tool_call_output if self.configuration.visibility_settings.previous_tool_call_output_visible else None,
+        #     history=history if self.configuration.visibility_settings.history_visible else None,
+        #     current_browser_snapshot=current_browser_snapshot if self.configuration.visibility_settings.snapshot_visible else None,
+        #     tools=None if not self.configuration.visibility_settings.tools_visible else tools,
+        # ).next_subtask
 
         return subtask

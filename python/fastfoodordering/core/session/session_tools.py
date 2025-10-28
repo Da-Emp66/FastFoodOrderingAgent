@@ -18,6 +18,13 @@ async def start_session(
     user = user.replace("{", "").replace("}", "") # STRONG TODO: LLM should not generate user, current_geolocation
     session_id = str(uuid4())
     container_environment_vars = os.environ.copy()
+    
+    replacements = {}
+    for key, val in container_environment_vars.items():
+        val = val.replace("localhost", "host.docker.internal")
+        replacements[key] = val
+    container_environment_vars.update(replacements)
+    
     container_environment_vars.update({
         "_DYN_WEB_AGENT_USER": user,
         "_DYN_WEB_AGENT_SESSION_ID": session_id,
@@ -42,6 +49,8 @@ async def start_session(
         web_agent_environment_spec.update({ "volumes": absolute_path_volumes })
     container = docker_client.containers.run(
         **web_agent_environment_spec,
+        network=os.getenv("DOCKER_NETWORK_NAME", "fast-food"),
+        extra_hosts={"host.docker.internal": "host-gateway"},
         restart_policy={"Name": "always"},
         environment=container_environment_vars,
         detach=True,

@@ -1,4 +1,5 @@
 FROM ghcr.io/astral-sh/uv:bookworm-slim AS builder
+USER root
 RUN apt-get update && apt-get install libgl1 libglib2.0-0 -y && apt-get clean
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy

@@ -43,9 +43,10 @@ response:
 web_agent_spec:
   image: ${WEB_AGENT_IMAGE:-web-agent}:${WEB_AGENT_TAG:-latest}
   name: ${_DYN_WEB_AGENT_USER}-session-${_DYN_WEB_AGENT_SESSION_ID}
-  command: ${WEB_AGENT_COMMAND:-uv run core/web/serve.py}
+  command: ${WEB_AGENT_COMMAND:-nohup Xvfb :99 -ac & export DISPLAY=:99 && uv run core/web/serve.py}
   volumes:
     - "${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-custom-mcp.yaml}:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-custom-mcp.yaml}"
+    - "/home/da-emp66/.cache/ms-playwright/:/home/da-emp66/.cache/ms-playwright/" # TEMPORARY -- REMOVE ONCE YOU FIGURE OUT HOW TO GET IT TO RECOGNIZE `PLAYWRIGHT_BROWSERS_PATH="/root/.cache/ms-playwright"`
 
 # ports:
 #   - "${_DYN_WEB_AGENT_PORT:-9000}:${_DYN_WEB_AGENT_PORT:-9000}"

@@ -105,16 +105,26 @@ class SessionManager:
         ).choices[0].message.content
         response = extract_final_message_content(response)
         # Determine and call the tool
-        tool_prediction_response, tool_call_result = await self.tool_caller.determine_and_call_tools(
-            user=prompt.user,
-            prompt=prompt.prompt,
-            response=response,
-            session_id=prompt.session_id,
-            current_geolocation=prompt.current_geolocation,
-        )
-        previous_tool_call = tool_prediction_response
-        previous_tool_call_output = tool_call_result
-        print(tool_call_result)
+        try:
+            generated_tool = await self.tool_caller.determine_tool(
+                user=prompt.user,
+                prompt=prompt.prompt,
+                response=response,
+                session_id=prompt.session_id,
+                current_geolocation=prompt.current_geolocation,
+            )
+        except Exception as e:
+            generated_tool = None
+            result = f"Failed to call tool: {e}"
+            print(result)
+        
+        if generated_tool is not None:
+            try:
+                result = await self.tool_caller.call_tool(generated_tool)
+            except Exception as e:
+                result = f"Failed to call tool {generated_tool.spec}: {e}"
+                print(result)
+
         return SessionManagerChatResult(
             response=response,
             session_id=None,

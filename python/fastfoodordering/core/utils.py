@@ -1,5 +1,6 @@
 import abc
 from dataclasses import dataclass
+import functools
 import importlib
 from inspect import signature, Parameter
 from io import StringIO
@@ -10,6 +11,7 @@ import re
 import socket
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+import warnings
 import typing_extensions
 from box import Box
 import dspy
@@ -67,6 +69,19 @@ def load_yaml_string(yaml_string: str) -> Any:
     file_buffer.write(yaml_string)
     file_buffer.seek(0)
     return yaml.safe_load(file_buffer)
+
+def deprecated(message):
+    def inner(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            warnings.warn(
+                f"{func.__name__} is deprecated. {message}",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            return func(*args, **kwargs)
+        return wrapper
+    return inner
 
 ENV_VAR_WITH_POSSIBLE_DEFAULT_PATTERN = re.compile(r"\$\{([^\}\:]+)(?:\:\-([^\}]+?))?\}|\$([A-Za-z0-9\_\-\\\/]+)")
 def expand_env_vars_with_defaults_sub_repl(match):
@@ -198,12 +213,49 @@ UsableTool = Union[
     Any,
 ]
 
+class GeneratedToolSpec(BaseModel):
+    tool: str
+    args: Dict[str, Any] = {}
+
+@dataclass
+class GeneratedTool:
+    usable: UsableTool
+    spec: GeneratedToolSpec
+
+@dataclass
+class ToolReport:
+    generated_tool: GeneratedTool
+    result: str
+
 class ToolCaller(metaclass=abc.ABCMeta):
     configuration: Optional[_BasicConfigType] = None
     tools: Dict[str, UsableTool] = {}
+
     async def initialize_tools(self): pass
+
     @abc.abstractmethod
-    async def determine_and_call_tools(self, **kwargs) -> Tuple[str, str]: raise NotImplementedError()
+    async def determine_tool(self, **kwargs) -> GeneratedTool: raise NotImplementedError()
+    
+    async def call_tool(self, generated_tool: GeneratedTool, **kwargs) -> str:
+        return str(await generated_tool.usable(**generated_tool.spec.args))
+    
+    async def determine_and_call_tools(self, **kwargs) -> ToolReport:
+        try:
+            generated_tool = await self.determine_tool(**kwargs)
+        except Exception as e:
+            generated_tool = None
+            result = f"Failed to call tool: {e}"
+
+        if generated_tool is not None:
+            try:
+                result = await self.call_tool(generated_tool)
+            except Exception as e:
+                result = f"Failed to call tool {generated_tool.spec}: {e}"
+
+        return ToolReport(
+            generated_tool=generated_tool,
+            result=result,
+        )
 
 class DSPyToolCaller(ToolCaller):
     async def initialize_tools(self, tool_prediction_signature: type[dspy.Signature]):
@@ -233,7 +285,7 @@ class DSPyToolCaller(ToolCaller):
         )
         self.stream_tool_prediction = dspy.streamify(self.tool_prediction)
     
-    async def determine_and_call_tools(self, **kwargs):
+    async def determine_tool(self, **kwargs) -> GeneratedTool:
         # Create the output stream object based on the current task
         output_stream = self.stream_tool_prediction(**kwargs)
         # Show the LLM's outputs as it generates the tool prediction
@@ -246,25 +298,28 @@ class DSPyToolCaller(ToolCaller):
         selected_tool_args = tool_prediction_response.get("selected_tool_args", None)
         if selected_tool_name in self.tools:
             try:
-                try:
-                    # Correct a common formatting mistake in JSON structure
-                    if selected_tool_name in selected_tool_args and \
-                        isinstance(selected_tool_args[selected_tool_name], dict):
-                        selected_tool_args = selected_tool_args[selected_tool_name]
-                except Exception as e:
-                    print(f"Error in correcting JSON: {e}")
-                print(f"Tool: {selected_tool_name}")
-                print(f"Args: {selected_tool_args}")
-                tool = self.tools[selected_tool_name]
-                tool_call_result = await tool.acall(**selected_tool_args)
+                # Correct a common formatting mistake in JSON structure
+                if selected_tool_name in selected_tool_args and \
+                    isinstance(selected_tool_args[selected_tool_name], dict):
+                    selected_tool_args = selected_tool_args[selected_tool_name]
             except Exception as e:
-                print(e)
-                tool_call_result = e
+                print(f"Error in correcting JSON: {e}")
+            print(f"Tool: {selected_tool_name}")
+            print(f"Args: {selected_tool_args}")
+            tool = self.tools[selected_tool_name]
         else:
-            tool_call_result = f"Tool {selected_tool_name} not in list of available tools. List of available tools is {list(self.tools.keys())}."
-        print({"tool": selected_tool_name, "args": selected_tool_args})
-        print(tool_call_result)
-        return str({"tool": selected_tool_name, "args": selected_tool_args}), tool_call_result
+            raise ValueError(f"Tool {selected_tool_name} not in list of available tools. List of available tools is {list(self.tools.keys())}.")
+        
+        return GeneratedTool(
+            usable=tool,
+            spec=GeneratedToolSpec(
+                tool=selected_tool_name,
+                args=selected_tool_args,
+            )
+        )
+
+    async def call_tool(self, generated_tool: GeneratedTool, **kwargs) -> str:
+        return str(await generated_tool.usable.acall(**generated_tool.spec.args))
 
 class SamplingParams(typing_extensions.TypedDict):
     """Mirrors `from guidance._schema import SamplingParams` but with Python3.10 Pydantic support."""
@@ -312,14 +367,20 @@ class ConstrainedToolCaller(ToolCaller):
             tools.update({tool.name: McpToolFunctionWrapper(tool=tool, session=session) for tool in session_tools})
         for tool in self.configuration.custom_tools:
             tool = find_or_return_function(tool)
-            tools.update({tool.__name__: BasicToolFunctionWrapper(tool)})
+            if hasattr(tool, "__name__"):
+                tool_name = tool.__name__
+            elif hasattr(tool, "name"):
+                tool_name = tool.name
+            else:
+                raise f"Tool {tool} is neither a custom function or a locally-referenced MCP function."
+            tools.update({tool_name: BasicToolFunctionWrapper(tool)})
         self.tools = tools
         tool_options = list(self.tools.keys())
         with guidance_system():
             self.lm += self.configuration.tool_system_prompt \
                 .replace("{tool_options}", yaml.safe_dump(tool_options))
 
-    async def determine_and_call_tools(self, **kwargs):
+    async def determine_tool(self, **kwargs) -> GeneratedTool:
         tool_options = list(self.tools.keys())
         with guidance_user():
             user_prompt = self.configuration.tool_selection_user_prompt_format \
@@ -360,14 +421,14 @@ class ConstrainedToolCaller(ToolCaller):
                 args = json.loads(self.lm["generated_args"])
                 selected_tool_representation = str({"tool": name, "args": args})
                 print(selected_tool_representation)
-                try:
-                    result = await selected_tool(**args)
-                    return selected_tool_representation, result
-                except Exception as e:
-                    return selected_tool_representation, str(e)
             else:
-                return (
-                    str({"tool": name, "args": {}}),
-                    f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}"
+                raise ValueError(f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}")
+            
+            return GeneratedTool(
+                usable=selected_tool,
+                spec=GeneratedToolSpec(
+                    tool=name,
+                    args=args,
                 )
-    
+            )
+        

@@ -1,5 +1,27 @@
 FROM ghcr.io/astral-sh/uv:bookworm-slim AS builder
-RUN apt-get update && apt-get install libgl1 libglib2.0-0 -y && apt-get clean
+USER root
+RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libglib2.0-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libcups2 \
+    fonts-liberation \
+    libappindicator3-1 \
+    libgdk-pixbuf2.0-0 \
+    xorg \
+    x11vnc \
+    xvfb \
+    && apt-get clean
+
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 # Configure the Python directory so it is consistent
@@ -13,8 +35,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project --no-dev
 RUN uv run playwright install
+ENV PLAYWRIGHT_BROWSERS_PATH="/root/.cache/ms-playwright"
 COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
+
 ENV PATH="/app/.venv/bin:$PATH"
-CMD [ "uv", "run", "core/web/serve.py" ]
+# Set a default display number
+ENV DISPLAY=:99
+ENV QT_DEBUG_PLUGINS=1
+# Start Xvfb in the background and run your command
+CMD bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & \
+    sleep 1 && \
+    uv run core/web/serve.py

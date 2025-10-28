@@ -9,7 +9,7 @@ import PIL
 import cv2
 import dspy
 from mcp import StdioServerParameters
-from core.utils import DSPyToolCaller, MCPUserConfiguration, from_config
+from core.utils import DSPyToolCaller, GeneratedTool, MCPUserConfiguration, ToolReport, from_config
 from core.web.interface import BrowserVisibilityConfiguration
 from core.web.tool_calling.interface import FILEPATH_REGEX, BrowserToolCaller
 
@@ -68,10 +68,28 @@ class DSPyBrowserToolCaller(DSPyToolCaller, BrowserToolCaller):
 
     def __init__(self, configuration: Union[Dict[str, Any], DSPyBrowserToolCallerConfiguration]):
         self.configuration: DSPyBrowserToolCallerConfiguration = from_config(configuration, DSPyBrowserToolCallerConfiguration)
+        print("Instantiating DSPyBrowserToolCaller...")
 
     async def initialize_tools(self, tool_prediction_signature: Optional[type[dspy.Signature]]=None):
         return await super().initialize_tools(tool_prediction_signature or self.WebToolSelectionSignature)
 
+    async def determine_tool(
+        self,
+        overall_goal: str,
+        subtask: str,
+        previous_browser_screenshot: Optional[cv2.typing.MatLike] = None,
+        current_browser_screenshot: Optional[cv2.typing.MatLike] = None,
+        current_browser_snapshot: Optional[str] = None
+    ) -> GeneratedTool:
+        return await super().determine_tool(
+            overall_goal=overall_goal,
+            task=subtask,
+            tools=list(self.tools.values()),
+            current_browser_snapshot=current_browser_snapshot, # if visibility
+            previous_browser_screenshot=dspy_image_or_blank(previous_browser_screenshot), # if visibility
+            current_browser_screenshot=dspy_image_or_blank(current_browser_screenshot), # if visibility
+        )
+    
     async def determine_and_call_tools(
         self,
         overall_goal: str,
@@ -79,8 +97,8 @@ class DSPyBrowserToolCaller(DSPyToolCaller, BrowserToolCaller):
         previous_browser_screenshot: Optional[cv2.typing.MatLike] = None,
         current_browser_screenshot: Optional[cv2.typing.MatLike] = None,
         current_browser_snapshot: Optional[str] = None
-    ):
-        return super().determine_and_call_tools(
+    ) -> ToolReport:
+        return await super().determine_and_call_tools(
             overall_goal=overall_goal,
             task=subtask,
             tools=list(self.tools.values()),
