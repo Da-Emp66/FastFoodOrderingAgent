@@ -25,10 +25,6 @@ dependencies = [
     "websockets>=15.0.1",
 ]
 
-[project.scripts]
-session_manager = "core.session.serve:main"
-web_agent = "core.web.serve:main"
-
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"

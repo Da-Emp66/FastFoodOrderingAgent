@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import cv2
 import litellm
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import websockets
 
 from core.utils import (
@@ -50,18 +50,21 @@ class FoodOrDrinkItem(BaseModel):
     official_name: str
     special_instructions: Optional[str] = None
 
+class ObjectiveSpecification(BaseModel):
+    objective: str = Field(alias="objective")
+    order: List[FoodOrDrinkItem] = []
+
 class Session(BaseModel):
     user: str
     session_id: str
-    objective: str
-    order: List[FoodOrDrinkItem] = []
+    objective_spec: ObjectiveSpecification
 
 class CompletionStatus(enum.Enum):
     IN_PROGRESS = "in_progress"
     DONE = "done"
 
 class SessionCompletionStatus(BaseModel):
-    status: CompletionStatus
+    state: CompletionStatus
     items_ordered: List[FoodOrDrinkItem] = []
 
 class SessionManagerResponseConfiguration(BaseModel):
@@ -159,3 +162,10 @@ class SessionManager:
     #     if session is None:
     #         return cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH)
     #     return session.web_agent.screenshot or cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH)
+
+    async def create_session(user: str, session_id: str, objective: str):
+        raise NotImplementedError()
+
+    async def update_session(user: str, session_id: str, objective: str):
+        raise NotImplementedError()
+    

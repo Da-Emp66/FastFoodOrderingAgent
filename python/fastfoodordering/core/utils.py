@@ -6,6 +6,7 @@ from io import StringIO
 import json
 import os
 from pathlib import Path
+import re
 import socket
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -67,19 +68,35 @@ def load_yaml_string(yaml_string: str) -> Any:
     file_buffer.seek(0)
     return yaml.safe_load(file_buffer)
 
+ENV_VAR_WITH_POSSIBLE_DEFAULT_PATTERN = re.compile(r"\$\{([^\}\:]+)(?:\:\-([^\}]+?))?\}|\$([A-Za-z0-9\_\-\\\/]+)")
+def expand_env_vars_with_defaults_sub_repl(match):
+    var_name = match.group(1) or match.group(3)
+    default_value = match.group(2)
+    return os.environ.get(var_name, default_value or "")
+def expand_env_vars_with_defaults(s: str) -> str:
+    """
+    Expand environment variables like:
+        $VAR
+        ${VAR}
+        ${VAR:-default}
+    """
+    return ENV_VAR_WITH_POSSIBLE_DEFAULT_PATTERN.sub(expand_env_vars_with_defaults_sub_repl, s)
+
 def populate_environment_specifications(spec: Union[str, Dict[str, Any]], **kwargs):
     """Recursively populates a dictionary's keys and values or populates a string with environment variables."""
     if type(spec) == str:
-        previous = os.environ
+        original = os.environ
         os.environ.update(kwargs)
-        value = os.path.expandvars(spec)
-        os.environ = previous
+        value = expand_env_vars_with_defaults(spec)
+        os.environ = original
         return value
     elif type(spec) == dict:
         return {
-            populate_environment_specifications(key, kwargs=kwargs): populate_environment_specifications(val, kwargs=kwargs)
-            for key, val in spec
+            populate_environment_specifications(key, **kwargs): populate_environment_specifications(val, **kwargs)
+            for key, val in spec.items()
         }
+    elif type(spec) == list:
+        return [populate_environment_specifications(item, **kwargs) for item in spec]
     else:
         return spec
 
@@ -155,6 +172,7 @@ class MockMCPToolSchemaDefinition:
         self.inputSchema = self.function_args_to_schema(function_ref)
     
     def function_args_to_schema(self, func: Callable):
+        """NOTE: Pydantic models in the signature are actually passed back as JSON dicts if using a ConstrainedToolCaller."""
         sig = signature(func)
         fields = {}
         for name, param in sig.parameters.items():

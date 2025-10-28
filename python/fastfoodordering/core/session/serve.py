@@ -34,7 +34,7 @@ litellm.api_base = os.getenv("OPENAI_BASE_URL")
 MODEL_TO_CLIENT_CLASS_MAP.update({litellm.api_base: lambda *args, **kwargs: OpenAICUAClient(*args, **kwargs)})
 
 docker_client = docker.from_env()
-session_manager = SessionManager(Path(__file__).parent.parent / "configuration" / "session_manager.yaml")
+session_manager = SessionManager(Path(__file__).parent.parent.parent / "configuration" / "session_manager.yaml")
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -84,15 +84,15 @@ def get_sessions(user: str) -> List[str]:
     return list(session_manager.sessions.get(user, {}).keys())
 
 @app.post("/{user}/sessions")
-def post_sessions_auto_create_id(user: str, objective: SessionObjective) -> SessionId:
-    return SessionId(session_id=session_manager.create_session(user, str(uuid.uuid4()), objective.objective))
+async def post_sessions_auto_create_id(user: str, objective: SessionObjective) -> SessionId:
+    return SessionId(session_id=(await session_manager.create_session(user, str(uuid.uuid4()), objective.objective)))
 
 @app.put("/{user}/sessions/{session_id}")
-def put_sessions(user: str, session_id: str, objective: SessionObjective) -> SessionId:
+async def put_sessions(user: str, session_id: str, objective: SessionObjective) -> SessionId:
     if session_manager.sessions.get(user, {}).get(session_id, None) is None:
-        return SessionId(session_id=session_manager.create_session(user, session_id, objective.objective))
+        return SessionId(session_id=(await session_manager.create_session(user, session_id, objective.objective)))
     else:
-        return SessionId(session_id=session_manager.update_session(user, session_id, objective.objective))
+        return SessionId(session_id=(await session_manager.update_session(user, session_id, objective.objective)))
 
 @app.get("/{user}/sessions/{session_id}/screenshot")
 def get_screenshot(user: str, session_id: str) -> BrowserBase64Screenshot:

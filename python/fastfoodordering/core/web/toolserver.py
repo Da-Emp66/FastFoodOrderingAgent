@@ -11,7 +11,7 @@ from stagehand import Stagehand, StagehandConfig, StagehandPage
 BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
     "latitude": 28.5383,
     "longitude": -81.3792,
-    "accuracy": 100,
+    "accuracy": 100
 }'''))
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
 page: StagehandPage = None

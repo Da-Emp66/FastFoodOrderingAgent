@@ -1,4 +1,6 @@
 import argparse
+import copy
+import json
 import os
 from pathlib import Path
 import threading
@@ -10,17 +12,40 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from core.web.agent import BrowserAgentSystem
-from core.session.session import CompletionStatus, Session, SessionCompletionStatus
+from core.session.session import CompletionStatus, ObjectiveSpecification, Session, SessionCompletionStatus
 
-ME = Session(
-    user=os.environ.get("SESSION_USER"),
-    session_id=os.environ.get("SESSION_ID"),
-    objective=os.environ.get("SESSION_OBJECTIVE"),
-)
-STATUS = SessionCompletionStatus(
-    status=CompletionStatus.IN_PROGRESS,
-)
-CURRENT_ITEMS_ORDERED = []
+class SessionInProgress:
+    original_spec: Session
+    current_spec: Session
+    status: SessionCompletionStatus
+    browser_agent: BrowserAgentSystem
+
+    def __init__(
+        self,
+        user: str,
+        session_id: str,
+        objective_spec: ObjectiveSpecification,
+        status: SessionCompletionStatus,
+        browser_agent: BrowserAgentSystem,
+    ):
+        self.original_spec = Session(
+            user=user,
+            session_id=session_id,
+            objective_spec=objective_spec,
+        )
+        self.current_spec = copy.deepcopy(self.original_spec)
+        self.current_spec.__pydantic_setattr_handlers__.update({
+            field: self.on_current_session_member_change for field in self.current_spec.__dict__.keys()
+        })
+        self.status = status
+        self.browser_agent = browser_agent
+
+    def on_current_session_member_change(self, _original, key, val):
+        print(f"Current `{key}` for session `{self.current_spec.session_id}` changed to {val}")
+        super().__setattr__(key, val)
+
+    def __call__(self, *args, **kwds):
+        raise NotImplementedError()
 
 # Load environment variables
 dotenv_to_use = find_dotenv()
@@ -46,7 +71,20 @@ lm = dspy.LM(
     model_type="chat",
 )
 dspy.settings.configure(lm=lm)
-browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
+this_session = SessionInProgress(
+    user=os.environ.get("SESSION_USER"),
+    session_id=os.environ.get("SESSION_ID"),
+    objective_spec=ObjectiveSpecification(
+        objective=os.environ.get("SESSION_OBJECTIVE"),
+        order=json.loads(os.environ.get("SESSION_OBJECTIVE_ORDER", "[]")),
+    ),
+    status=SessionCompletionStatus(
+        state=CompletionStatus.IN_PROGRESS,
+        items_ordered=[],
+    ),
+    browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH),
+)
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -76,19 +114,19 @@ async def stream_browser(websocket: WebSocket):
 @app.get("/active-session/status")
 def get_status():
     return SessionCompletionStatus(
-        status=STATUS,
-        items_ordered=CURRENT_ITEMS_ORDERED,
+        status=this_session.status.state,
+        items_ordered=this_session.status.items_ordered,
     )
 
 @app.put("/active-session")
 def update_overall_goal(session: Session):
-    assert session.user == ME.user
-    assert session.session_id == ME.session_id
-    os.environ["SESSION_OBJECTIVE"] = session.objective
-    return Response()
+    assert session.user == this_session.original_spec.user
+    assert session.session_id == this_session.original_spec.session_id
+    this_session.current_spec.objective_spec.objective = session.objective_spec.objective
+    return Response(status_code=200)
 
 def main(args):
-    main_loop = threading.Thread(target=browser_agent.run_until_complete)
+    main_loop = threading.Thread(target=this_session)
     main_loop.start()
     uvicorn.run(
         app, 
