@@ -2,9 +2,10 @@ import json
 import os
 from uuid import uuid4
 
+import requests
 import yaml
 from core.session.serve import docker_client, session_manager
-from core.session.session import BrowserGeoLocation
+from core.session.session import BrowserGeoLocation, ObjectiveSpecification, Session
 from core.utils import populate_environment_specifications
 
 WEB_AGENT_IMAGE = os.getenv("WEB_AGENT_IMAGE", "web-agent")
@@ -60,7 +61,17 @@ async def start_session(
 async def update_session(
     user: str,
     session_id: str,
+    updated_objective_spec: ObjectiveSpecification,
 ):
+    response = requests.put(f"http://{user}-session-{session_id}:9000/active-session", data=Session(
+        user=user,
+        session_id=session_id,
+        objective_spec=updated_objective_spec,
+    ))
+
+    if response.status_code != 200:
+        return f"Failed to update session with ID {session_id} for user {user}: {response.text}"
+
     return f"Session with ID {session_id} for user {user} updated."
 
 async def cancel_session(
