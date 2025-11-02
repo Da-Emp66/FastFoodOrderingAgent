@@ -9,10 +9,13 @@ import {
   CircularProgress,
   TextField,
   IconButton,
-  Collapse
+  Collapse,
+  Tooltip,
+  Slide,
+  Grow
 } from '@mui/material';
-import { Mic, MicOff, Send, Videocam, VideocamOff } from '@mui/icons-material';
-import { sendSessionChat, getScreenshotStreamUrl } from '../services/api';
+import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close } from '@mui/icons-material';
+import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick } from '../services/api';
 import { useGeolocation } from '../hooks/useGeolocation';
 
 interface Message {
@@ -26,6 +29,12 @@ interface VoiceInterfaceProps {
   initialQuery?: string;
 }
 
+interface ClickIndicator {
+  id: number;
+  x: number;
+  y: number;
+}
+
 export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProps) {
   const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,6 +43,8 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoadingResponse, setIsLoadingResponse] = useState(false);
   const [showScreenshot, setShowScreenshot] = useState(false);
+  const [expandedView, setExpandedView] = useState(false);
+  const [clickIndicators, setClickIndicators] = useState<ClickIndicator[]>([]);
   const [username] = useState(() => localStorage.getItem('username') || 'user');
   const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
 
@@ -168,19 +179,218 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
     }
   };
 
+  const handleScreenshotClick = async (e: React.MouseEvent<HTMLElement>) => {
+    // Find the actual image element (if it exists)
+    const imgElement = e.currentTarget.querySelector('img');
+    const rect = imgElement
+      ? imgElement.getBoundingClientRect()
+      : e.currentTarget.getBoundingClientRect();
+
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
+    // Get pixel coordinates relative to image for visual feedback
+    const pixelX = e.clientX - rect.left;
+    const pixelY = e.clientY - rect.top;
+
+    // Always log coordinates with session status
+    if (sessionId) {
+      console.log(`Click at (${x.toFixed(3)}, ${y.toFixed(3)}) | Session: ${sessionId} | Sending to backend...`);
+    } else {
+      console.log(`Click at (${x.toFixed(3)}, ${y.toFixed(3)}) | browserview-false | No session - API call skipped`);
+    }
+
+    // Add visual feedback
+    const clickId = Date.now();
+    const newIndicator: ClickIndicator = { id: clickId, x: pixelX, y: pixelY };
+    setClickIndicators(prev => [...prev, newIndicator]);
+
+    // Remove indicator after animation
+    setTimeout(() => {
+      setClickIndicators(prev => prev.filter(indicator => indicator.id !== clickId));
+    }, 1000);
+
+    // Only send API call if session exists
+    if (sessionId) {
+      try {
+        await sendBrowserClick(username, sessionId, x, y);
+        console.log(`Click sent successfully`);
+      } catch (error) {
+        console.error('Error sending click:', error);
+      }
+    }
+  };
+
   return (
-    <Container maxWidth="sm">
+    <>
+      {/* Animated Background Orbs - Full Screen */}
       <Box
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: -1,
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          py: 2,
-          px: 2
+          overflow: 'hidden'
         }}
       >
+        {/* Orb 1 */}
+        <Box
+          sx={{
+            position: 'absolute',
+            width: '500px',
+            height: '500px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(255, 182, 193, 0.4), transparent 70%)',
+            filter: 'blur(60px)',
+            animation: 'float1 20s infinite ease-in-out',
+            top: '-10%',
+            left: '-10%',
+            '@keyframes float1': {
+              '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+              '33%': { transform: 'translate(30vw, 20vh) scale(1.1)' },
+              '66%': { transform: 'translate(-20vw, 40vh) scale(0.9)' }
+            }
+          }}
+        />
+        {/* Orb 2 */}
+        <Box
+          sx={{
+            position: 'absolute',
+            width: '400px',
+            height: '400px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(135, 206, 250, 0.4), transparent 70%)',
+            filter: 'blur(60px)',
+            animation: 'float2 25s infinite ease-in-out',
+            top: '20%',
+            right: '-10%',
+            '@keyframes float2': {
+              '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+              '33%': { transform: 'translate(-40vw, 30vh) scale(1.2)' },
+              '66%': { transform: 'translate(10vw, -20vh) scale(0.8)' }
+            }
+          }}
+        />
+        {/* Orb 3 */}
+        <Box
+          sx={{
+            position: 'absolute',
+            width: '600px',
+            height: '600px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(255, 215, 0, 0.3), transparent 70%)',
+            filter: 'blur(80px)',
+            animation: 'float3 30s infinite ease-in-out',
+            bottom: '-15%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            '@keyframes float3': {
+              '0%, 100%': { transform: 'translate(-50%, 0) scale(1)' },
+              '50%': { transform: 'translate(-30%, -40vh) scale(1.3)' }
+            }
+          }}
+        />
+        {/* Orb 4 */}
+        <Box
+          sx={{
+            position: 'absolute',
+            width: '350px',
+            height: '350px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(186, 85, 211, 0.35), transparent 70%)',
+            filter: 'blur(50px)',
+            animation: 'float4 22s infinite ease-in-out',
+            bottom: '10%',
+            right: '5%',
+            '@keyframes float4': {
+              '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+              '50%': { transform: 'translate(-25vw, -30vh) scale(1.1)' }
+            }
+          }}
+        />
+      </Box>
+
+      {/* Phone Frame Container */}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: expandedView ? 'flex-start' : 'center',
+          alignItems: 'center',
+          minHeight: '100vh',
+          padding: '20px',
+          gap: expandedView ? '20px' : 0,
+          transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}
+      >
+        {/* Phone Bezel */}
+        <Box
+          sx={{
+            width: expandedView ? 'auto' : '100%',
+            maxWidth: '430px',
+            minHeight: 'calc(100vh - 40px)',
+            backgroundColor: '#1a1a1a',
+            borderRadius: '50px',
+            padding: '12px',
+            boxShadow: expandedView
+              ? '0 20px 60px rgba(0, 0, 0, 0.5)'
+              : '0 20px 60px rgba(0, 0, 0, 0.5)',
+            position: 'relative',
+            flexShrink: 0,
+            transform: expandedView ? 'scale(0.95)' : 'scale(1)',
+            transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          {/* Phone Notch */}
+          <Box
+            sx={{
+              position: 'absolute',
+              top: '12px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '140px',
+              height: '28px',
+              backgroundColor: '#1a1a1a',
+              borderRadius: '0 0 20px 20px',
+              zIndex: 10
+            }}
+          />
+
+          {/* Phone Screen */}
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+              minHeight: 'calc(100vh - 64px)',
+              backgroundColor: '#000',
+              borderRadius: '40px',
+              overflow: 'hidden',
+              position: 'relative'
+            }}
+          >
+            <Container
+              maxWidth="sm"
+              sx={{
+                height: '100%',
+                padding: 0,
+                margin: 0,
+                maxWidth: '100% !important'
+              }}
+            >
+              <Box
+                sx={{
+                  minHeight: 'calc(100vh - 64px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  py: 2,
+                  px: 2,
+                  position: 'relative',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                }}
+              >
         {/* Header */}
         <Box sx={{ textAlign: 'center', py: 2 }}>
           <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
@@ -192,22 +402,44 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         <Collapse in={showScreenshot}>
           <Box sx={{ width: '100%', mb: 2, px: 2 }}>
             <Paper elevation={3} sx={{ p: 1, borderRadius: 2 }}>
-              <Typography variant="caption" sx={{ color: '#666', display: 'block', mb: 1 }}>
-                Agent Browser View
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#666' }}>
+                  Agent Browser View
+                </Typography>
+                <Tooltip title={expandedView ? "Collapse view" : "Expand to side-by-side view"}>
+                  <IconButton
+                    size="small"
+                    onClick={() => setExpandedView(!expandedView)}
+                    sx={{ color: '#2196f3' }}
+                  >
+                    <Fullscreen fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
               {sessionId ? (
-                <img
-                  src={getScreenshotStreamUrl(username, sessionId)}
-                  alt="Browser screenshot stream"
-                  style={{
+                <Box
+                  onClick={handleScreenshotClick as any}
+                  sx={{
                     width: '100%',
-                    height: 'auto',
+                    cursor: 'pointer',
                     borderRadius: '8px',
-                    display: 'block'
+                    overflow: 'hidden'
                   }}
-                />
+                >
+                  <img
+                    src={getScreenshotStreamUrl(username, sessionId)}
+                    alt="Browser screenshot stream"
+                    style={{
+                      width: '100%',
+                      height: 'auto',
+                      display: 'block',
+                      pointerEvents: 'none'
+                    }}
+                  />
+                </Box>
               ) : (
                 <Box
+                  onClick={handleScreenshotClick as any}
                   sx={{
                     width: '100%',
                     minHeight: '200px',
@@ -216,7 +448,12 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
                     justifyContent: 'center',
                     backgroundColor: '#f5f5f5',
                     borderRadius: '8px',
-                    border: '2px dashed #ccc'
+                    border: '2px dashed #ccc',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      backgroundColor: '#e8e8e8',
+                      borderColor: '#999'
+                    }
                   }}
                 >
                   <Typography variant="body2" sx={{ color: '#999', textAlign: 'center', px: 2 }}>
@@ -393,8 +630,119 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
             </Typography>
           </Box>
         )}
+              </Box>
+            </Container>
+          </Box>
+        </Box>
+
+        {/* Expanded Browser View - Side Panel */}
+        <Slide direction="left" in={expandedView} timeout={500} mountOnEnter unmountOnExit>
+          <Grow in={expandedView} timeout={500}>
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 'calc(100vh - 40px)',
+                backgroundColor: '#1a1a1a',
+                borderRadius: '20px',
+                padding: '20px',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                display: 'flex',
+                flexDirection: 'column',
+                maxWidth: 'calc(100vw - 500px)'
+              }}
+            >
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 2
+            }}
+          >
+            <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+              Browser View - Click to Interact
+            </Typography>
+            <IconButton
+              onClick={() => setExpandedView(false)}
+              sx={{ color: 'white' }}
+            >
+              <Close />
+            </IconButton>
+          </Box>
+
+          <Box
+            onClick={handleScreenshotClick as any}
+            sx={{
+              flex: 1,
+              backgroundColor: '#000',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              position: 'relative',
+              cursor: 'crosshair',
+              '&:hover': {
+                backgroundColor: '#0a0a0a'
+              }
+            }}
+          >
+            {sessionId ? (
+              <>
+                <img
+                  src={getScreenshotStreamUrl(username, sessionId)}
+                  alt="Browser screenshot - expanded"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    display: 'block',
+                    pointerEvents: 'none'
+                  }}
+                />
+                {/* Click indicators */}
+                {clickIndicators.map((indicator) => (
+                  <Box
+                    key={indicator.id}
+                    sx={{
+                      position: 'absolute',
+                      left: indicator.x,
+                      top: indicator.y,
+                      width: '40px',
+                      height: '40px',
+                      marginLeft: '-20px',
+                      marginTop: '-20px',
+                      borderRadius: '50%',
+                      border: '3px solid #2196f3',
+                      backgroundColor: 'rgba(33, 150, 243, 0.3)',
+                      pointerEvents: 'none',
+                      animation: 'clickPulse 1s ease-out',
+                      '@keyframes clickPulse': {
+                        '0%': {
+                          transform: 'scale(0.5)',
+                          opacity: 1
+                        },
+                        '100%': {
+                          transform: 'scale(2)',
+                          opacity: 0
+                        }
+                      }
+                    }}
+                  />
+                ))}
+              </>
+            ) : (
+              <Typography sx={{ color: 'white', textAlign: 'center', p: 4 }}>
+                Browser view not available yet.<br />
+                Start ordering to see the live view of the agent
+              </Typography>
+            )}
+          </Box>
+        </Box>
+          </Grow>
+        </Slide>
       </Box>
-    </Container>
+    </>
   );
 }
 
