@@ -1,4 +1,5 @@
 import argparse
+import atexit
 import base64
 import os
 from pathlib import Path
@@ -16,7 +17,9 @@ import litellm
 from pydantic import BaseModel
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 import uvicorn
+import yaml
 
+import shared
 from core.session.session import (
     VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH,
     SessionManager,
@@ -33,8 +36,6 @@ load_dotenv(dotenv_to_use)
 litellm.api_base = os.getenv("OPENAI_BASE_URL")
 MODEL_TO_CLIENT_CLASS_MAP.update({litellm.api_base: lambda *args, **kwargs: OpenAICUAClient(*args, **kwargs)})
 
-docker_client = docker.from_env()
-session_manager = SessionManager(Path(__file__).parent.parent.parent / "configuration" / "session_manager.yaml")
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -77,26 +78,26 @@ def chat(prompt: SimplePrompt) -> SimpleResponse:
 
 @app.post("/{user}/sessions/chat")
 async def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerChatResult:
-    return await session_manager(prompt)
+    return await shared.session_manager(prompt)
 
 @app.get("/{user}/sessions")
 def get_sessions(user: str) -> List[str]:
-    return list(session_manager.sessions.get(user, {}).keys())
+    return list(shared.session_manager.sessions.get(user, {}).keys())
 
 @app.post("/{user}/sessions")
 async def post_sessions_auto_create_id(user: str, objective: SessionObjective) -> SessionId:
-    return SessionId(session_id=(await session_manager.create_session(user, str(uuid.uuid4()), objective.objective)))
+    return SessionId(session_id=(await shared.session_manager.create_session(user, str(uuid.uuid4()), objective.objective)))
 
 @app.put("/{user}/sessions/{session_id}")
 async def put_sessions(user: str, session_id: str, objective: SessionObjective) -> SessionId:
-    if session_manager.sessions.get(user, {}).get(session_id, None) is None:
-        return SessionId(session_id=(await session_manager.create_session(user, session_id, objective.objective)))
+    if shared.session_manager.sessions.get(user, {}).get(session_id, None) is None:
+        return SessionId(session_id=(await shared.session_manager.create_session(user, session_id, objective.objective)))
     else:
-        return SessionId(session_id=(await session_manager.update_session(user, session_id, objective.objective)))
+        return SessionId(session_id=(await shared.session_manager.update_session(user, session_id, objective.objective)))
 
 @app.get("/{user}/sessions/{session_id}/screenshot")
 def get_screenshot(user: str, session_id: str) -> BrowserBase64Screenshot:
-    screenshot = session_manager.screenshot(user, session_id)
+    screenshot = shared.session_manager.screenshot(user, session_id)
     with tempfile.NamedTemporaryFile("wb+") as named_temporary_file:
         cv2.imwrite(named_temporary_file, screenshot)
         named_temporary_file.seek(0)
@@ -109,7 +110,7 @@ def stream_screenshot(user: str, session_id: str): # -> Union[StreamingResponse,
     try:
         # Return a StreamingResponse that continuously streams frames
         return StreamingResponse(
-            session_manager.browser_screenshot_generator(user, session_id),
+            shared.session_manager.browser_screenshot_generator(user, session_id),
             media_type="multipart/x-mixed-replace;boundary=frame",
         )
     # If an exception occurs (e.g., video capture error)
@@ -117,7 +118,20 @@ def stream_screenshot(user: str, session_id: str): # -> Union[StreamingResponse,
     except Exception:
         return FileResponse(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH, media_type="image/jpeg")
 
+def on_exit():
+    print("Performing exit sequence...")
+    container_ids = list(map(lambda x: x.id, shared.session_ids_to_containers.values()))
+    print(f"Containers include:\n{yaml.safe_dump(container_ids)}")
+    for container_id in container_ids:
+        print(f"Stopping and removing container {container_id}...")
+        container = shared.docker_client.containers.get(container_id)
+        container.stop()
+        container.remove()
+        print(f"Stopped and removed container {container_id}.")
+    print("Exit sequence stopped all session containers.")
+
 def main(args):
+    atexit.register(on_exit)
     lm = dspy.LM(
         os.getenv("OPENAI_BASE_URL"),
         api_base=os.getenv("MODEL_SERVER"),
@@ -130,6 +144,7 @@ def main(args):
         app=app,
         host=args.host,
         port=args.port,
+        workers=1,
     )
     
 if __name__ == "__main__":

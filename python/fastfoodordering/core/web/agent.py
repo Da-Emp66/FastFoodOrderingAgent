@@ -247,7 +247,7 @@ class BrowserAgentSystem:
                 current_browser_screenshot=current_browser_screenshot,
                 current_browser_snapshot=current_browser_snapshot,
             )
-            print(f"Tool to call determined to be: {json.dumps(generated_tool)}", flush=True)
+            print(f"Tool to call determined to be: {generated_tool}", flush=True)
 
             ### TODO: PROCESS TRANSFORMS
 

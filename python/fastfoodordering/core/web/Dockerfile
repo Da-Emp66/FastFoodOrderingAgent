@@ -44,7 +44,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Set a default display number
 ENV DISPLAY=:99
 ENV QT_DEBUG_PLUGINS=1
+
 # Start Xvfb in the background and run your command
 CMD bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & \
     sleep 1 && \
     uv run core/web/serve.py
+    

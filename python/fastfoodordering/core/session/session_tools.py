@@ -4,7 +4,9 @@ from uuid import uuid4
 
 import requests
 import yaml
-from core.session.serve import docker_client, session_manager
+import shared
+import core.session.serve as server
+# from core.session.serve import docker_client, session_manager, session_ids_to_containers
 from core.session.session import BrowserGeoLocation, ObjectiveSpecification, Session
 from core.utils import populate_environment_specifications
 
@@ -35,7 +37,7 @@ async def start_session(
         "BROWSER_GEOLOCATION": json.dumps(current_geolocation),
     })
     web_agent_environment_spec = populate_environment_specifications(
-        session_manager.configuration.web_agent_spec,
+        shared.session_manager.configuration.web_agent_spec,
         _DYN_WEB_AGENT_USER=user,
         _DYN_WEB_AGENT_SESSION_ID=session_id,
     )
@@ -48,7 +50,7 @@ async def start_session(
             host_path, path_inside_container = tuple(volume_mount_spec.split(':'))
             absolute_path_volumes.append(f"{os.path.abspath(host_path)}:{path_inside_container}")
         web_agent_environment_spec.update({ "volumes": absolute_path_volumes })
-    container = docker_client.containers.run(
+    container = shared.docker_client.containers.run(
         **web_agent_environment_spec,
         network=os.getenv("DOCKER_NETWORK_NAME", "fast-food"),
         extra_hosts={"host.docker.internal": "host-gateway"},
@@ -56,6 +58,8 @@ async def start_session(
         environment=container_environment_vars,
         detach=True,
     )
+    shared.session_ids_to_containers[session_id] = container
+    print(shared.session_ids_to_containers)
     return f"Session started as container ${container}. The session ID is {session_id}."
 
 async def update_session(
@@ -78,8 +82,12 @@ async def cancel_session(
     user: str,
     session_id: str,
 ):
-    container_name = populate_environment_specifications(session_manager.configuration.web_agent_spec["name"])
-    container = docker_client.containers.get(container_name)
+    container_name = populate_environment_specifications(shared.session_manager.configuration.web_agent_spec["name"])
+    container = shared.docker_client.containers.get(container_name)
+    # OR
+    # container_id = session_ids_to_containers.get(session_id)
+    # container = docker_client.containers.get(container_id)
     container.stop()
     container.remove()
+    shared.session_ids_to_containers.pop(session_id)
     return f"Session with ID {session_id} for user {user} canceled."
