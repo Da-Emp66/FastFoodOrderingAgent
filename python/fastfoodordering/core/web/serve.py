@@ -49,23 +49,6 @@ async def stream_browser(websocket: WebSocket):
     finally:
         print("WebSocket closed.")
 
-    # await websocket.accept()
-    # n_failures = 0
-    # while True:
-    #     try:
-    #         if os.path.exists(shared.CURRENT_SCREENSHOT_PATH) and os.path.isfile(shared.CURRENT_SCREENSHOT_PATH):
-    #             image_path = shared.CURRENT_SCREENSHOT_PATH
-    #         else:
-    #             image_path = shared.NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH
-    #         await websocket.send_bytes(cv2.imencode(".jpeg", cv2.imread(image_path))[1].tobytes())
-    #     except Exception as e:
-    #         if shared.MAX_WEBSOCKET_FAILURES != -1 and n_failures > shared.MAX_WEBSOCKET_FAILURES:
-    #             await websocket.close()
-    #         else:
-    #             print(f"Error in websocket: {e}")
-    #         n_failures += 1
-    #     time.sleep(0.1)
-
 @app.get("/active-session/status")
 def get_status():
     return SessionCompletionStatus(
