@@ -34,6 +34,11 @@ export interface BrowserBase64Screenshot {
   b64_encoded_image: string;
 }
 
+export interface BrowserClickCoordinates {
+  x: number;
+  y: number;
+}
+
 /**
  * Main chat endpoint for session manager agent
  * POST /{user}/sessions/chat
@@ -157,4 +162,32 @@ export async function getScreenshot(
  */
 export function getScreenshotStreamUrl(user: string, sessionId: string): string {
   return `${BACKEND_URL}/${user}/sessions/${sessionId}/screenshot/stream`;
+}
+
+/**
+ * Send a click event to the browser at relative coordinates (0-1 range)
+ * POST /{user}/sessions/{session_id}/click
+ */
+export async function sendBrowserClick(
+  user: string,
+  sessionId: string,
+  x: number,
+  y: number
+): Promise<void> {
+  const payload: BrowserClickCoordinates = { x, y };
+
+  const response = await fetch(
+    `${BACKEND_URL}/${user}/sessions/${sessionId}/click`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
 }
