@@ -6,6 +6,8 @@ from typing import Literal
 from fastmcp import FastMCP
 from stagehand import Stagehand, StagehandConfig, StagehandPage
 
+import shared
+
 # Default browser geolocation is Orlando
 # Accuracy denotes coordinate accuracy in meters.
 BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
@@ -89,7 +91,7 @@ async def click_coordinates(x: float, y: float):
 async def screenshot():
     global page
     try:
-        path = "/tmp/fast-food-custom-stagehand-server/tmp.jpg"
+        path = shared.CURRENT_SCREENSHOT_PATH
         os.makedirs(os.path.dirname(path), exist_ok=True)
         await page._page.screenshot(path=path, full_page=True)
         return path

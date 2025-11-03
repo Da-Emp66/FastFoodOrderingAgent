@@ -19,7 +19,6 @@ from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 import uvicorn
 import yaml
 
-import shared
 from core.session.session import (
     VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH,
     SessionManager,
@@ -36,6 +35,7 @@ load_dotenv(dotenv_to_use)
 litellm.api_base = os.getenv("OPENAI_BASE_URL")
 MODEL_TO_CLIENT_CLASS_MAP.update({litellm.api_base: lambda *args, **kwargs: OpenAICUAClient(*args, **kwargs)})
 
+import shared
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,

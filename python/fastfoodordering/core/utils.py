@@ -261,7 +261,11 @@ class DSPyToolCaller(ToolCaller):
     async def initialize_tools(self, tool_prediction_signature: type[dspy.Signature]):
         # Create the MCP session and initialize tools
         self.group = ClientSessionGroup(component_name_hook=lambda name, server_info: f"{(server_info.name)}_{name}")
-        self.mcp_sessions = { server_name: (await self.group.connect_to_server(server_params)) for server_name, server_params in self.configuration.mcp_servers.items() }
+        updated_mcp_servers = {}
+        for server_name, server_params in self.configuration.mcp_servers.items():
+            server_params.env = os.environ.copy()
+            updated_mcp_servers[server_name] = server_params
+        self.mcp_sessions = { server_name: (await self.group.connect_to_server(server_params)) for server_name, server_params in updated_mcp_servers.items() }
         # Initialize DSPy tools
         tools = [dspy.Tool(find_or_return_function(tool_function)) for tool_function in self.configuration.custom_tools]
         for _session_name, session in self.mcp_sessions.items():
@@ -361,7 +365,11 @@ class ConstrainedToolCaller(ToolCaller):
         tools = {}
         # Create the MCP session and initialize tools
         self.group = ClientSessionGroup(component_name_hook=lambda name, server_info: f"{(server_info.name)}_{name}")
-        self.mcp_sessions = { server_name: (await self.group.connect_to_server(server_params)) for server_name, server_params in self.configuration.mcp_servers.items() }
+        updated_mcp_servers = {}
+        for server_name, server_params in self.configuration.mcp_servers.items():
+            server_params.env = os.environ.copy()
+            updated_mcp_servers[server_name] = server_params
+        self.mcp_sessions = { server_name: (await self.group.connect_to_server(server_params)) for server_name, server_params in updated_mcp_servers.items() }
         for _session_name, session in self.mcp_sessions.items():
             session_tools = (await session.list_tools()).tools
             tools.update({tool.name: McpToolFunctionWrapper(tool=tool, session=session) for tool in session_tools})

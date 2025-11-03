@@ -4,8 +4,14 @@ services:
     build:
       context: .
       dockerfile: core/session/Dockerfile
-    command: ["uv", "run", "session_manager"]
     env_file:
       - ../../.env
+    environment:
+      - OPENAI_BASE_URL=http://host.docker.internal:8000
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 8080:8080
+    extra_hosts:
+      - host.docker.internal:host-gateway

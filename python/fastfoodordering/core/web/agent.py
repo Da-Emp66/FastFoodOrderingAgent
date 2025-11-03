@@ -19,20 +19,7 @@ from core.web.tool_calling.code_tools import CodeBrowserToolCaller
 from core.web.tool_calling.constrained_json_tools import ConstrainedBrowserToolCaller
 from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller
 from core.web.tool_calling.stagehand_tools import StageHandBrowserToolCaller
-
-MAX_TASK_ITERATIONS = os.environ.get("MAX_TASK_ITERATIONS", -1)
-
-print(f"Using MODEL=`{os.getenv('MODEL')}`", flush=True)
-print(f"Using OPENAI_BASE_URL=`{os.getenv('OPENAI_BASE_URL')}`", flush=True)
-print(f"Using OPENAI_API_KEY=`{os.getenv('OPENAI_API_KEY')}`", flush=True)
-
-lm = dspy.LM(
-    os.getenv('MODEL'),
-    api_base=os.getenv("OPENAI_BASE_URL"),
-    api_key=os.getenv("OPENAI_API_KEY"),
-    model_type="chat",
-)
-dspy.settings.configure(lm=lm)
+import shared
 
 class Plan(BaseModel):
     plan: str
@@ -176,7 +163,6 @@ class BrowserAgentSystem:
         time.sleep(0.2)
 
     async def iterate_task(self) -> AsyncGenerator[IterativeTaskResult, IterativeTaskResult]:
-        from core.web.serve import this_session
         print("Starting iterative task...", flush=True)
 
         complete = False
@@ -193,8 +179,8 @@ class BrowserAgentSystem:
         await self.tool_caller.initialize_tools()
         print("Tools initialized successfully.", flush=True)
 
-        while not complete and (MAX_TASK_ITERATIONS == -1 or iterations < MAX_TASK_ITERATIONS):
-            overall_goal = this_session.current_spec.objective_spec.objective
+        while not complete and (shared.MAX_TASK_ITERATIONS == -1 or iterations < shared.MAX_TASK_ITERATIONS):
+            overall_goal = shared.this_session.current_spec.objective_spec.objective
             print(f"Overall goal is currently: {overall_goal}", flush=True)
             ### Step 1: Determine sub-task
             if not self.planner.configuration.disable:

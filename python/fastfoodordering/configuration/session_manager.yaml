@@ -45,7 +45,7 @@ web_agent_spec:
   name: ${_DYN_WEB_AGENT_USER}-session-${_DYN_WEB_AGENT_SESSION_ID}
   # command: ${WEB_AGENT_COMMAND:-bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & sleep 1 && uv run core/web/serve.py}
   volumes:
-    - "${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-custom-mcp.yaml}:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-custom-mcp.yaml}"
+    - "/home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/configuration/dspy-planner-constrained-tools-custom-mcp.yaml:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-custom-mcp.yaml}"
     - "/home/da-emp66/.cache/ms-playwright/:/home/da-emp66/.cache/ms-playwright/" # TEMPORARY -- REMOVE ONCE YOU FIGURE OUT HOW TO GET IT TO RECOGNIZE `PLAYWRIGHT_BROWSERS_PATH="/root/.cache/ms-playwright"`
 
 # ports:

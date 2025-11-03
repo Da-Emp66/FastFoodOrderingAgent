@@ -1,13 +1,19 @@
 tool_mode: constrained
 tools:
-  mcp_servers: 
-    playwright: {
-      "command": "uv",
-      "args": [
-        "run",
-        "core/web/toolserver.py",
-      ],
-    }
+  custom_tools:
+    - function_name: navigate
+      import_spec: core/web/toolserver.py
+    - function_name: scroll
+      import_spec: core/web/toolserver.py
+    - function_name: click_element_by_text
+      import_spec: core/web/toolserver.py
+    - function_name: click_element_by_text
+      import_spec: core/web/toolserver.py
+    - function_name: get_element_coordinates_by_text
+      import_spec: core/web/toolserver.py
+    - function_name: click_coordinates
+      import_spec: core/web/toolserver.py
+    # - function_name: null
   browser_visibility:
     screenshot_tool_name: screenshot
     # snapshot_tool_name: browser_snapshot,

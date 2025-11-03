@@ -1,13 +1,12 @@
 import json
 import os
+from typing import Union
 from uuid import uuid4
 
 import requests
 import yaml
 import shared
-import core.session.serve as server
-# from core.session.serve import docker_client, session_manager, session_ids_to_containers
-from core.session.session import BrowserGeoLocation, ObjectiveSpecification, Session
+from core.session.session import BrowserGeoLocation, ObjectiveSpecification, Session, SessionManagerToolCallResult
 from core.utils import populate_environment_specifications
 
 WEB_AGENT_IMAGE = os.getenv("WEB_AGENT_IMAGE", "web-agent")
@@ -17,7 +16,7 @@ async def start_session(
     order: str,
     user: str,
     current_geolocation: BrowserGeoLocation,
-):
+) -> Union[str, "SessionManagerToolCallResult"]:
     user = user.replace("{", "").replace("}", "") # STRONG TODO: LLM should not generate user, current_geolocation
     session_id = str(uuid4())
     container_environment_vars = os.environ.copy()
@@ -35,6 +34,7 @@ async def start_session(
         "SESSION_ID": session_id,
         "SESSION_OBJECTIVE": order,
         "BROWSER_GEOLOCATION": json.dumps(current_geolocation),
+        "PLAYWRIGHT_BROWSERS_PATH": "/root/.cache/ms-playwright",
     })
     web_agent_environment_spec = populate_environment_specifications(
         shared.session_manager.configuration.web_agent_spec,
@@ -50,9 +50,12 @@ async def start_session(
             host_path, path_inside_container = tuple(volume_mount_spec.split(':'))
             absolute_path_volumes.append(f"{os.path.abspath(host_path)}:{path_inside_container}")
         web_agent_environment_spec.update({ "volumes": absolute_path_volumes })
+    print(shared.docker_client.networks.list())
+    network = shared.docker_client.networks.get(os.getenv("DOCKER_NETWORK_NAME", "fast-food"))
+    print(network)
     container = shared.docker_client.containers.run(
         **web_agent_environment_spec,
-        network=os.getenv("DOCKER_NETWORK_NAME", "fast-food"),
+        network=network.name,
         extra_hosts={"host.docker.internal": "host-gateway"},
         restart_policy={"Name": "always"},
         environment=container_environment_vars,
@@ -60,13 +63,16 @@ async def start_session(
     )
     shared.session_ids_to_containers[session_id] = container
     print(shared.session_ids_to_containers)
-    return f"Session started as container ${container}. The session ID is {session_id}."
+    return SessionManagerToolCallResult(
+        result=f"Session started as container ${container}. The session ID is {session_id}.",
+        session_id=session_id,
+    ).model_dump_json()
 
 async def update_session(
     user: str,
     session_id: str,
     updated_objective_spec: ObjectiveSpecification,
-):
+) -> Union[str, "SessionManagerToolCallResult"]:
     response = requests.put(f"http://{user}-session-{session_id}:9000/active-session", data=Session(
         user=user,
         session_id=session_id,
@@ -76,12 +82,12 @@ async def update_session(
     if response.status_code != 200:
         return f"Failed to update session with ID {session_id} for user {user}: {response.text}"
 
-    return f"Session with ID {session_id} for user {user} updated."
+    return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} updated.").model_dump_json()
 
 async def cancel_session(
     user: str,
     session_id: str,
-):
+) -> Union[str, "SessionManagerToolCallResult"]:
     container_name = populate_environment_specifications(shared.session_manager.configuration.web_agent_spec["name"])
     container = shared.docker_client.containers.get(container_name)
     # OR
@@ -90,4 +96,4 @@ async def cancel_session(
     container.stop()
     container.remove()
     shared.session_ids_to_containers.pop(session_id)
-    return f"Session with ID {session_id} for user {user} canceled."
+    return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} canceled.").model_dump_json()

@@ -1,8 +1,11 @@
 import asyncio
 import enum
+import json
 import logging
 import os
 from pathlib import Path
+import time
+import traceback
 from typing import Any, Dict, List, Optional, Union
 
 import cv2
@@ -39,6 +42,12 @@ class SessionManagerPrompt(BaseModel):
     """If the user has a session open and this query is for updating that session, pass the session_id returned when you first created the session."""
     current_geolocation: Optional[BrowserGeoLocation] = None
     """The user's current geolocation. To be used for the browser proxied location on session launch."""
+
+class SessionManagerToolCallResult(BaseModel):
+    result: str
+    """The result of the tool call."""
+    session_id: Optional[str] = None
+    """If a session was created for the first time by this tool call, the session_id is returned. Otherwise, null."""
 
 class SessionManagerChatResult(BaseModel):
     response: str
@@ -91,6 +100,7 @@ class SessionManager:
         self.sessions: Dict[str, Dict[str, Session]] = {}
     
     async def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+        session_id = None
         await self.tool_caller.initialize_tools()
         # Determine what to do and inform the user
         response = litellm.completion(
@@ -121,51 +131,138 @@ class SessionManager:
         if generated_tool is not None:
             try:
                 result = await self.tool_caller.call_tool(generated_tool)
+                session_id = json.loads(result).get("session_id", None)
             except Exception as e:
                 result = f"Failed to call tool {generated_tool.spec}: {e}"
                 print(result)
 
         return SessionManagerChatResult(
             response=response,
-            session_id=None,
+            session_id=session_id,
         )
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
-        try:
-            container_spec = populate_environment_specifications(
-                self.configuration.web_agent_spec,
-                _DYN_WEB_AGENT_USER=user,
-                _DYN_WEB_AGENT_SESSION_ID=session_id,
-            )
-            session_url = f"http://{container_spec['name']}:9000" # TODO: Don't hardcode this port
-            # Loop until the client connection exist
-            while True:
-                # Check if the camera capture is successfully opened
-                async with websockets.connect(f"{session_url}/active-session/view") as websocket:
-                    # Wait for a response from the server
-                    response = await asyncio.wait_for(websocket.recv(), timeout=0.5)
-                    if len(response) == 0:
-                        yield (
-                            b'--frame\r\n'
-                            b'Content-Type: image/jpeg\r\n\r\n' +
-                            cv2.imencode(".jpeg", cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH))[1].tobytes() +
-                            b'\r\n'
-                        )
-                    else:
-                        yield (
-                            b'--frame\r\n'
-                            b'Content-Type: image/jpeg\r\n\r\n' +
-                            response +
-                            b'\r\n'
-                        )
-                # yield b'--frame--\r\n'
-                break
-        except GeneratorExit:
-            BACKEND_LOGGER.error("Exiting the generator for browser screenshot.")
-        except Exception:
-            BACKEND_LOGGER.error("Exiting the generator function for browser screenshot due to general exception.")
-        finally:
-            BACKEND_LOGGER.info("Closing connection.")
+        container_spec = populate_environment_specifications(
+            self.configuration.web_agent_spec,
+            _DYN_WEB_AGENT_USER=user,
+            _DYN_WEB_AGENT_SESSION_ID=session_id,
+        )
+        session_url = f"ws://{container_spec['name']}:9000/active-session/view" # TODO: Don't hardcode this port
+        print(f"Connecting to `{session_url}`...")
+
+        while True:
+            try:
+                async with websockets.connect(session_url, open_timeout=10.0) as websocket:
+                    print(f"Connected to {session_url}")
+
+                    while True:
+                        try:
+                            response = await asyncio.wait_for(websocket.recv(), timeout=30.0)
+                            if not response:
+                                # If empty, send placeholder frame
+                                frame_bytes = cv2.imencode(
+                                    ".jpeg",
+                                    cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH)
+                                )[1].tobytes()
+                            else:
+                                frame_bytes = response
+
+                            yield (
+                                b"--frame\r\n"
+                                b"Content-Type: image/jpeg\r\n\r\n" +
+                                frame_bytes +
+                                b"\r\n"
+                            )
+
+                        except asyncio.TimeoutError:
+                            print(f"Timeout waiting for frame from {session_url}")
+                            break  # reconnect
+
+                        except websockets.ConnectionClosed:
+                            print(f"WebSocket closed, reconnecting to {session_url}")
+                            break
+
+                        await asyncio.sleep(0.1)
+
+            except Exception as e:
+                BACKEND_LOGGER.error(f"Error in screenshot generator: {e}\n{traceback.format_exc()}")
+
+            finally:
+                BACKEND_LOGGER.info(f"Closing {user} websocket connection to session {session_id}")
+
+            # Short delay before attempting reconnect
+            await asyncio.sleep(1.0)
+
+
+        # print(f"Connecting to `{session_url}/active-session/view`...")
+        # # Loop until the client connection exist
+        # while True:
+        #     try:
+        #         # Check if the camera capture is successfully opened
+        #         async with websockets.connect(f"{session_url}/active-session/view", open_timeout=60.0) as websocket:
+        #             # Wait for a response from the server
+        #             response = await asyncio.wait_for(websocket.recv(), timeout=60.0)
+        #             if len(response) == 0:
+        #                 yield (
+        #                     b'--frame\r\n'
+        #                     b'Content-Type: image/jpeg\r\n\r\n' +
+        #                     cv2.imencode(".jpeg", cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH))[1].tobytes() +
+        #                     b'\r\n'
+        #                 )
+        #             else:
+        #                 yield (
+        #                     b'--frame\r\n'
+        #                     b'Content-Type: image/jpeg\r\n\r\n' +
+        #                     response +
+        #                     b'\r\n'
+        #                 )
+        #         # # yield b'--frame--\r\n'
+        #         # break
+        #     except Exception as e:
+        #         BACKEND_LOGGER.error(f"{e} : {traceback.format_exc()}")
+        #     finally:
+        #         BACKEND_LOGGER.info(f"Closing {user} websocket connection to session with Session ID {session_id}.")
+                
+        #     time.sleep(0.1)
+
+
+
+
+        # try:
+        #     container_spec = populate_environment_specifications(
+        #         self.configuration.web_agent_spec,
+        #         _DYN_WEB_AGENT_USER=user,
+        #         _DYN_WEB_AGENT_SESSION_ID=session_id,
+        #     )
+        #     session_url = f"http://{container_spec['name']}:9000" # TODO: Don't hardcode this port
+        #     # Loop until the client connection exist
+        #     while True:
+        #         # Check if the camera capture is successfully opened
+        #         async with websockets.connect(f"{session_url}/active-session/view") as websocket:
+        #             # Wait for a response from the server
+        #             response = await asyncio.wait_for(websocket.recv(), timeout=0.5)
+        #             if len(response) == 0:
+        #                 yield (
+        #                     b'--frame\r\n'
+        #                     b'Content-Type: image/jpeg\r\n\r\n' +
+        #                     cv2.imencode(".jpeg", cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH))[1].tobytes() +
+        #                     b'\r\n'
+        #                 )
+        #             else:
+        #                 yield (
+        #                     b'--frame\r\n'
+        #                     b'Content-Type: image/jpeg\r\n\r\n' +
+        #                     response +
+        #                     b'\r\n'
+        #                 )
+        #         # yield b'--frame--\r\n'
+        #         break
+        # except GeneratorExit:
+        #     BACKEND_LOGGER.error("Exiting the generator for browser screenshot.")
+        # except Exception:
+        #     BACKEND_LOGGER.error("Exiting the generator function for browser screenshot due to general exception.")
+        # finally:
+        #     BACKEND_LOGGER.info("Closing connection.")
 
     # def screenshot(self, user: str, session_id: str) -> cv2.typing.MatLike:
     #     session = self.sessions.get(user, {}).get(session_id, None)
