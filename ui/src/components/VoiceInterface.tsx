@@ -10,11 +10,9 @@ import {
   TextField,
   IconButton,
   Collapse,
-  Tooltip,
-  Slide,
-  Grow
+  Tooltip
 } from '@mui/material';
-import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close } from '@mui/icons-material';
+import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close, FullscreenExit } from '@mui/icons-material';
 import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick } from '../services/api';
 import { useGeolocation } from '../hooks/useGeolocation';
 
@@ -317,30 +315,23 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
       <Box
         sx={{
           display: 'flex',
-          justifyContent: expandedView ? 'flex-start' : 'center',
+          justifyContent: 'center',
           alignItems: 'center',
           minHeight: '100vh',
-          padding: '20px',
-          gap: expandedView ? '20px' : 0,
-          transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+          padding: '20px'
         }}
       >
         {/* Phone Bezel */}
         <Box
           sx={{
-            width: expandedView ? 'auto' : '100%',
+            width: '100%',
             maxWidth: '430px',
             minHeight: 'calc(100vh - 40px)',
             backgroundColor: '#1a1a1a',
             borderRadius: '50px',
             padding: '12px',
-            boxShadow: expandedView
-              ? '0 20px 60px rgba(0, 0, 0, 0.5)'
-              : '0 20px 60px rgba(0, 0, 0, 0.5)',
-            position: 'relative',
-            flexShrink: 0,
-            transform: expandedView ? 'scale(0.95)' : 'scale(1)',
-            transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+            position: 'relative'
           }}
         >
           {/* Phone Notch */}
@@ -370,27 +361,131 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
               position: 'relative'
             }}
           >
-            <Container
-              maxWidth="sm"
-              sx={{
-                height: '100%',
-                padding: 0,
-                margin: 0,
-                maxWidth: '100% !important'
-              }}
-            >
+            {expandedView ? (
+              /* Fullscreen Browser View Inside Phone */
               <Box
+                onClick={handleScreenshotClick as any}
                 sx={{
+                  width: '100%',
+                  height: '100%',
                   minHeight: 'calc(100vh - 64px)',
+                  backgroundColor: '#000',
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
-                  py: 2,
-                  px: 2,
-                  position: 'relative',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  cursor: 'crosshair',
+                  position: 'relative'
                 }}
               >
+                {/* Minimize Button */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 10,
+                    zIndex: 10
+                  }}
+                >
+                  <IconButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedView(false);
+                    }}
+                    sx={{
+                      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                      color: 'white',
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)'
+                      }
+                    }}
+                  >
+                    <FullscreenExit />
+                  </IconButton>
+                </Box>
+
+                {/* Browser Content */}
+                <Box
+                  sx={{
+                    flex: 1,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    position: 'relative'
+                  }}
+                >
+                  {sessionId ? (
+                    <>
+                      <img
+                        src={getScreenshotStreamUrl(username, sessionId)}
+                        alt="Browser screenshot - fullscreen"
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '100%',
+                          objectFit: 'contain',
+                          display: 'block',
+                          pointerEvents: 'none'
+                        }}
+                      />
+                      {clickIndicators.map((indicator) => (
+                        <Box
+                          key={indicator.id}
+                          sx={{
+                            position: 'absolute',
+                            left: indicator.x,
+                            top: indicator.y,
+                            width: '40px',
+                            height: '40px',
+                            marginLeft: '-20px',
+                            marginTop: '-20px',
+                            borderRadius: '50%',
+                            border: '3px solid #2196f3',
+                            backgroundColor: 'rgba(33, 150, 243, 0.3)',
+                            pointerEvents: 'none',
+                            animation: 'clickPulse 1s ease-out',
+                            '@keyframes clickPulse': {
+                              '0%': {
+                                transform: 'scale(0.5)',
+                                opacity: 1
+                              },
+                              '100%': {
+                                transform: 'scale(2)',
+                                opacity: 0
+                              }
+                            }
+                          }}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    <Typography sx={{ color: 'white', textAlign: 'center', p: 4 }}>
+                      Browser view not available yet.<br />
+                      Start ordering to see the live view of the agent
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            ) : (
+              /* Normal Chat Interface */
+              <Container
+                maxWidth="sm"
+                sx={{
+                  height: '100%',
+                  padding: 0,
+                  margin: 0,
+                  maxWidth: '100% !important'
+                }}
+              >
+                <Box
+                  sx={{
+                    minHeight: 'calc(100vh - 64px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    py: 2,
+                    px: 2,
+                    position: 'relative',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  }}
+                >
         {/* Header */}
         <Box sx={{ textAlign: 'center', py: 2 }}>
           <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
@@ -630,117 +725,11 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
             </Typography>
           </Box>
         )}
-              </Box>
-            </Container>
-          </Box>
-        </Box>
-
-        {/* Expanded Browser View - Side Panel */}
-        <Slide direction="left" in={expandedView} timeout={500} mountOnEnter unmountOnExit>
-          <Grow in={expandedView} timeout={500}>
-            <Box
-              sx={{
-                flex: 1,
-                minHeight: 'calc(100vh - 40px)',
-                backgroundColor: '#1a1a1a',
-                borderRadius: '20px',
-                padding: '20px',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-                display: 'flex',
-                flexDirection: 'column',
-                maxWidth: 'calc(100vw - 500px)'
-              }}
-            >
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              mb: 2
-            }}
-          >
-            <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
-              Browser View - Click to Interact
-            </Typography>
-            <IconButton
-              onClick={() => setExpandedView(false)}
-              sx={{ color: 'white' }}
-            >
-              <Close />
-            </IconButton>
-          </Box>
-
-          <Box
-            onClick={handleScreenshotClick as any}
-            sx={{
-              flex: 1,
-              backgroundColor: '#000',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              position: 'relative',
-              cursor: 'crosshair',
-              '&:hover': {
-                backgroundColor: '#0a0a0a'
-              }
-            }}
-          >
-            {sessionId ? (
-              <>
-                <img
-                  src={getScreenshotStreamUrl(username, sessionId)}
-                  alt="Browser screenshot - expanded"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    display: 'block',
-                    pointerEvents: 'none'
-                  }}
-                />
-                {/* Click indicators */}
-                {clickIndicators.map((indicator) => (
-                  <Box
-                    key={indicator.id}
-                    sx={{
-                      position: 'absolute',
-                      left: indicator.x,
-                      top: indicator.y,
-                      width: '40px',
-                      height: '40px',
-                      marginLeft: '-20px',
-                      marginTop: '-20px',
-                      borderRadius: '50%',
-                      border: '3px solid #2196f3',
-                      backgroundColor: 'rgba(33, 150, 243, 0.3)',
-                      pointerEvents: 'none',
-                      animation: 'clickPulse 1s ease-out',
-                      '@keyframes clickPulse': {
-                        '0%': {
-                          transform: 'scale(0.5)',
-                          opacity: 1
-                        },
-                        '100%': {
-                          transform: 'scale(2)',
-                          opacity: 0
-                        }
-                      }
-                    }}
-                  />
-                ))}
-              </>
-            ) : (
-              <Typography sx={{ color: 'white', textAlign: 'center', p: 4 }}>
-                Browser view not available yet.<br />
-                Start ordering to see the live view of the agent
-              </Typography>
+                </Box>
+              </Container>
             )}
           </Box>
         </Box>
-          </Grow>
-        </Slide>
       </Box>
     </>
   );
