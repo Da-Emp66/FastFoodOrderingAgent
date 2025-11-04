@@ -39,7 +39,6 @@ async def stream_browser(websocket: WebSocket):
             )
             success, jpeg = cv2.imencode(".jpeg", cv2.imread(image_path))
             if success:
-                print("Trying to send back image over websocket...")
                 await websocket.send_bytes(jpeg.tobytes())
             await asyncio.sleep(0.1)
     except WebSocketDisconnect:
@@ -78,11 +77,6 @@ def main(args):
 
     main_loop = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": args.host, "port": args.port})
     main_loop.start()
-    # uvicorn.run(
-    #     app, 
-    #     host=args.host,
-    #     port=args.port,
-    # )
     asyncio.run(shared.this_session())
 
 if __name__ == "__main__":

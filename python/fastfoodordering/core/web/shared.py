@@ -1,5 +1,3 @@
-
-# Load environment variables
 import copy
 import json
 import os

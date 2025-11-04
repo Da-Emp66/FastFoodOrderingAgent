@@ -34,6 +34,29 @@ tools:
       Current Geolocation: {current_geolocation}
     User's query: {prompt}
     Your previous response: '{response}'
+
+    Example:
+    ```
+    User information:
+      Username: john.doe@gmail.com
+      Session ID: none
+      Current Geolocation: {"lat": -28.71, "lon": 22.573, "accuracy": 100}
+    User's query: Can you order me a burger and fries from Wendy's?
+    Your previous response: 'I will work to schedule an order at Wendy's for you.'
+    ```
+    ->
+    ```json
+    {
+      "order": "Order a burger and fries from Wendy's.",
+      "user": "john.doe@gmail.com",
+      "current_geolocation": {"lat": -28.71, "lon": 22.573, "accuracy": 100}
+    }
+    ```
+
+    Rules:
+     - If you are filling in the order field, always use a complete sentence.
+     - The 'user' and 'current_geolocation' fields should be have the exact same
+     values as the input 'user' and 'current_geolocation' fields.
 response:
   response_system_prompt: |
     You are a helpful assistant who specializes in helping users place food orders at restaurants nearby. Respond to the user based on the user's request. 

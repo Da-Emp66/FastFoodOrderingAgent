@@ -22,6 +22,7 @@ mcp = FastMCP("Custom StageHand MCP Server")
 @mcp.tool
 async def navigate(url: str):
     global page
+    print("In function call `navigate`...")
     try:
         await page.goto(url)
         await page._page.context.grant_permissions(["geolocation"])
@@ -33,6 +34,7 @@ async def navigate(url: str):
 @mcp.tool
 async def scroll(direction: Literal["left", "right", "up", "down"], delta_pixels: float):
     global page
+    print("In function call `scroll`...")
     try:
         delta_x_pixels = 0.0
         delta_y_pixels = 0.0
@@ -51,6 +53,7 @@ async def scroll(direction: Literal["left", "right", "up", "down"], delta_pixels
 @mcp.tool
 async def click_element_by_text(text: str):
     global page
+    print("In function call `click_element_by_text`...")
     try:
         any_elements_clicked = False
         for element in await page._page.get_by_text(text).all():
@@ -67,6 +70,7 @@ async def click_element_by_text(text: str):
 @mcp.tool
 async def get_element_coordinates_by_text(text: str):
     global page
+    print("In function call `get_element_coordinates_by_text`...")
     try:
         bboxes = []
         for element in await page._page.get_by_text(text).all():
@@ -80,6 +84,7 @@ async def get_element_coordinates_by_text(text: str):
 @mcp.tool
 async def click_coordinates(x: float, y: float):
     global page
+    print("In function call `click_coordinates`...")
     try:
         await page._page.mouse.click(x, y)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
@@ -88,8 +93,24 @@ async def click_coordinates(x: float, y: float):
         return str(e)
 
 @mcp.tool
+async def fill_text_box(text: str):
+    global page
+    print("In function call `fill_text_box`...")
+    try:
+        for el in await page.query_selector_all("input, textarea"):
+            if await el.is_visible() and await el.is_enabled():
+                try:
+                    await el.fill(text)
+                    await el.press("Enter")
+                except Exception:
+                    pass  # skip read-only or non-fillable elements
+    except Exception as e:
+        return str(e)
+
+@mcp.tool
 async def screenshot():
     global page
+    print("In function call `screenshot`...")
     try:
         path = shared.CURRENT_SCREENSHOT_PATH
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -101,6 +122,7 @@ async def screenshot():
 @mcp.tool
 async def set_location(latitude: float, longitude: float, accuracy: int = 0):
     global page
+    print("In function call `set_location`...")
     await page._page.context.set_geolocation({
         "latitude": latitude,
         "longitude": longitude,

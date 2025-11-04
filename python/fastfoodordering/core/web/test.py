@@ -104,12 +104,14 @@ if __name__ == "__main__":
     #     "browser_visibility_mode": "debug",
     # })
 
+    os.environ["SESSION_USER"] = "user"
+    os.environ["SESSION_ID"] = "id"
+    os.environ["SESSION_OBJECTIVE"] = "Order me a burger from Burger King (https://www.bk.com/)"
+
     browser_search_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
 
     ### Example inference
-    browser_search_agent(
-        "Order me a burger from Burger King (https://www.bk.com/)"
-    )
+    browser_search_agent(os.environ["SESSION_OBJECTIVE"])
 
     ### Example inference
     # browser_search_agent(

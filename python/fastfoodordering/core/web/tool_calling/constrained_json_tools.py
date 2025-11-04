@@ -101,6 +101,8 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
         if screenshot_tool is not None:
             screenshot_text = await screenshot_tool()
             screenshot_filepath = next(chain(re.findall(FILEPATH_REGEX, screenshot_text), [None]))
+            if screenshot_filepath is None:
+                return None
             image = cv2.imread(screenshot_filepath)
             if os.path.exists(screenshot_filepath) and \
                 os.path.isfile(screenshot_filepath) and \
