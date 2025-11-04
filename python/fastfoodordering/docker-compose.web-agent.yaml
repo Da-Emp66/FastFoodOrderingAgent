@@ -1,0 +1,18 @@
+services:
+  web-agent:
+    image: ${WEB_AGENT_IMAGE:-web-agent}:${WEB_AGENT_TAG:-latest}
+    container_name: web-agent
+    build:
+      context: .
+      dockerfile: core/web/Dockerfile
+    env_file:
+      - ../../.env
+    ports:
+      - 9000:9000
+    environment:
+      - SESSION_USER=testuser
+      - SESSION_ID=test_id
+      - SESSION_OBJECTIVE='Go to burger king and order a burger'
+      - OPENAI_BASE_URL=http://host.docker.internal:8000
+    extra_hosts:
+      - host.docker.internal:host-gateway

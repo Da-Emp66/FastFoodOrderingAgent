@@ -1,7 +1,7 @@
 include:
   - ./ui/docker-compose.yaml
   - ./llama-cpp-server.${LLM_DEVICE_TYPE:-cpu}.docker-compose.yaml
-  # - ./python/fastfoodordering/docker-compose.yaml
+  - ./python/fastfoodordering/docker-compose.yaml
 
 services:
   dozzle:
@@ -15,4 +15,4 @@ services:
 
 networks:
   default:
-    name: fast-food
+    name: ${DOCKER_NETWORK_NAME:-fast-food}

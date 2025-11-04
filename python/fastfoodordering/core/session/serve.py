@@ -1,40 +1,49 @@
 import argparse
+import atexit
 import base64
 import os
 from pathlib import Path
 import tempfile
-from typing import List, Optional, Union
+from typing import List, Optional
 import uuid
 import cv2
-from dotenv import load_dotenv
+import docker
+from dotenv import find_dotenv, load_dotenv
 import dspy
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import litellm
 from pydantic import BaseModel
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 import uvicorn
+import yaml
 
-from core.session_manager_agent import (
+from core.session.session import (
     VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH,
     SessionManager,
     SessionManagerChatResult,
     SessionManagerPrompt,
 )
 
-# Environment
-os.environ["MODEL"] = "openai/models/ggml-model-Q4_K_M.gguf"
-os.environ["OPENAI_API_KEY"] = "sk-1234"
-os.environ["OPENAI_BASE_URL"] = "http://localhost:8000"
-os.environ["MODEL_SERVER"] = os.getenv("OPENAI_BASE_URL")
+# Load environment variables
+dotenv_to_use = find_dotenv()
+if dotenv_to_use: print(f"Using .env at path: `{dotenv_to_use}`")
+load_dotenv(dotenv_to_use)
+
+# Update how litellm interacts by default
 litellm.api_base = os.getenv("OPENAI_BASE_URL")
 MODEL_TO_CLIENT_CLASS_MAP.update({litellm.api_base: lambda *args, **kwargs: OpenAICUAClient(*args, **kwargs)})
 
-# Load environment variables
-load_dotenv()
-
-session_manager = SessionManager(Path(__file__).parent.parent / "configuration" / "session_manager.yaml")
+import shared
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # List of allowed origins
+    allow_credentials=True, # Allow cookies and credentials
+    allow_methods=["*"], # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"], # Allow all headers
+)
 
 class SimplePrompt(BaseModel):
     prompt: str
@@ -56,10 +65,11 @@ class BrowserBase64Screenshot(BaseModel):
 def chat(prompt: SimplePrompt) -> SimpleResponse:
     """Obtain a basic response from the LLM."""
     response = litellm.completion(
-        os.getenv("OPENAI_BASE_URL"),
+        os.getenv("MODEL"),
         messages=[{"content": prompt.prompt, "role": "user"}],
         api_key=os.getenv("OPENAI_API_KEY"),
         base_url=os.getenv("OPENAI_BASE_URL"),
+        max_tokens=200,
     )
     try:
         return SimpleResponse(response=response.choices.pop(0).message.content)
@@ -67,27 +77,27 @@ def chat(prompt: SimplePrompt) -> SimpleResponse:
         return SimpleResponse(response=None)
 
 @app.post("/{user}/sessions/chat")
-def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerChatResult:
-    return session_manager(prompt)
+async def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+    return await shared.session_manager(prompt)
 
 @app.get("/{user}/sessions")
 def get_sessions(user: str) -> List[str]:
-    return list(session_manager.sessions.get(user, {}).keys())
+    return list(shared.session_manager.sessions.get(user, {}).keys())
 
 @app.post("/{user}/sessions")
-def post_sessions_auto_create_id(user: str, objective: SessionObjective) -> SessionId:
-    return SessionId(session_id=session_manager.create_session(user, str(uuid.uuid4()), objective.objective))
+async def post_sessions_auto_create_id(user: str, objective: SessionObjective) -> SessionId:
+    return SessionId(session_id=(await shared.session_manager.create_session(user, str(uuid.uuid4()), objective.objective)))
 
 @app.put("/{user}/sessions/{session_id}")
-def put_sessions(user: str, session_id: str, objective: SessionObjective) -> SessionId:
-    if session_manager.sessions.get(user, {}).get(session_id, None) is None:
-        return SessionId(session_id=session_manager.create_session(user, session_id, objective.objective))
+async def put_sessions(user: str, session_id: str, objective: SessionObjective) -> SessionId:
+    if shared.session_manager.sessions.get(user, {}).get(session_id, None) is None:
+        return SessionId(session_id=(await shared.session_manager.create_session(user, session_id, objective.objective)))
     else:
-        return SessionId(session_id=session_manager.update_session(user, session_id, objective.objective))
+        return SessionId(session_id=(await shared.session_manager.update_session(user, session_id, objective.objective)))
 
 @app.get("/{user}/sessions/{session_id}/screenshot")
 def get_screenshot(user: str, session_id: str) -> BrowserBase64Screenshot:
-    screenshot = session_manager.screenshot(user, session_id)
+    screenshot = shared.session_manager.screenshot(user, session_id)
     with tempfile.NamedTemporaryFile("wb+") as named_temporary_file:
         cv2.imwrite(named_temporary_file, screenshot)
         named_temporary_file.seek(0)
@@ -100,7 +110,7 @@ def stream_screenshot(user: str, session_id: str): # -> Union[StreamingResponse,
     try:
         # Return a StreamingResponse that continuously streams frames
         return StreamingResponse(
-            session_manager.browser_screenshot_generator(user, session_id),
+            shared.session_manager.browser_screenshot_generator(user, session_id),
             media_type="multipart/x-mixed-replace;boundary=frame",
         )
     # If an exception occurs (e.g., video capture error)
@@ -108,7 +118,20 @@ def stream_screenshot(user: str, session_id: str): # -> Union[StreamingResponse,
     except Exception:
         return FileResponse(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH, media_type="image/jpeg")
 
+def on_exit():
+    print("Performing exit sequence...")
+    container_ids = list(map(lambda x: x.id, shared.session_ids_to_containers.values()))
+    print(f"Containers include:\n{yaml.safe_dump(container_ids)}")
+    for container_id in container_ids:
+        print(f"Stopping and removing container {container_id}...")
+        container = shared.docker_client.containers.get(container_id)
+        container.stop()
+        container.remove()
+        print(f"Stopped and removed container {container_id}.")
+    print("Exit sequence stopped all session containers.")
+
 def main(args):
+    atexit.register(on_exit)
     lm = dspy.LM(
         os.getenv("OPENAI_BASE_URL"),
         api_base=os.getenv("MODEL_SERVER"),
@@ -121,11 +144,12 @@ def main(args):
         app=app,
         host=args.host,
         port=args.port,
+        workers=1,
     )
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=9000)
+    parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     main(args)

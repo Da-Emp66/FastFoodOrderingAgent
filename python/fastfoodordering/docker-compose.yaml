@@ -1,11 +1,17 @@
 services:
-  web-agent: # session-manager?
-    container_name: web-agent
+  session-manager:
+    container_name: session-manager
     build:
       context: .
-      dockerfile: Dockerfile
-    command: ["uv", "run", "webagent"]
+      dockerfile: core/session/Dockerfile
+    env_file:
+      - ../../.env
     environment:
-      MODEL_SERVER: ${MODEL_SERVER}
+      - OPENAI_BASE_URL=http://host.docker.internal:8000
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 8080:8080
+    extra_hosts:
+      - host.docker.internal:host-gateway
