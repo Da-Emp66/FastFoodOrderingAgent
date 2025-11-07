@@ -215,3 +215,6 @@ scripts/models/
 
 # MacOS-specific files
 .DS_Store
+
+# VSCode configurations
+.claude
