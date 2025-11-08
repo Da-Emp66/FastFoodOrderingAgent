@@ -153,7 +153,7 @@ async def type_text_by_box_label_number(number: int, text: str):
     if not element_handle:
         return f"[❌] Error: No element found at ({center_x}, {center_y})"
     # Wrap it back into a Playwright ElementHandle
-    element = await element_handle.as_element()
+    element = element_handle.as_element()
     if element is None:
         return f"[❌] Error: Element at ({center_x}, {center_y}) is not a valid input element"
     # Optional: check visibility
