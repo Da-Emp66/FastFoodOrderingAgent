@@ -31,9 +31,26 @@ async def screenshot():
     try:
         path = shared.CURRENT_SCREENSHOT_PATH
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        await page._page.screenshot(path=path, full_page=True) # , full_page=True
+        # Take screenshot of only the visible viewport (not full_page)
+        # This ensures OmniParser labels match the visible area
+        await page._page.screenshot(path=path, full_page=False)
+
+        # Add visual marker for the most recent click
         if MOST_RECENT_CLICK is not None:
-            cv2.imwrite(path, place_coordinate_on_image(cv2.imread(path), coordinate=MOST_RECENT_CLICK))
+            # MOST_RECENT_CLICK now stores absolute viewport coordinates (vx, vy)
+            # We need to convert to relative coordinates (0-1) for place_coordinate_on_image
+            viewport_width = page._page.viewport_size['width']
+            viewport_height = page._page.viewport_size['height']
+            relative_x = MOST_RECENT_CLICK[0] / viewport_width
+            relative_y = MOST_RECENT_CLICK[1] / viewport_height
+            cv2.imwrite(
+                path,
+                place_coordinate_on_image(
+                    cv2.imread(path),
+                    coordinate=(relative_x, relative_y),
+                    coordinate_system='relative'
+                )
+            )
         return path
     except Exception as e:
         return str(e)
@@ -112,63 +129,88 @@ async def click_element_by_box_label_number(number: int):
             return f"[❌] Error: There is no box labeled by number {number}."
         item = current_image_parse_metadata[number]
         item = ParsedItemDetails.model_validate_json(item)
-        center_x = (item.bbox[0] + item.bbox[2]) / 2
-        center_y = (item.bbox[1] + item.bbox[3]) / 2
+        # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
+        center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
+        center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
+
         await page.wait_for_load_state("domcontentloaded")
-        scroll_x, scroll_y = await page.evaluate("() => [window.scrollX, window.scrollY]")
-        vx, vy = center_x * page._page.viewport_size['width'] + scroll_x, center_y * page._page.viewport_size['height'] + scroll_y
+
+        # Convert relative coordinates to absolute viewport coordinates
+        # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
+        vx = center_x_relative * page._page.viewport_size['width']
+        vy = center_y_relative * page._page.viewport_size['height']
+
         await page.bring_to_front()
         await page._page.mouse.move(vx, vy)
         await page._page.mouse.click(vx, vy)
-        MOST_RECENT_CLICK = (center_x, center_y)
+
+        # Store absolute click coordinates for visual feedback
+        MOST_RECENT_CLICK = (vx, vy)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
-        return f"[✅] Success: Clicked element labeled {number} at ({center_x}, {center_y})"
+        return f"[✅] Success: Clicked element labeled {number} at viewport coordinates ({vx:.1f}, {vy:.1f}), relative ({center_x_relative:.3f}, {center_y_relative:.3f})"
     except Exception as e:
         return str(e)
 
 @mcp.tool
-async def type_text_by_box_label_number(number: int, text: str):  
+async def type_text_by_box_label_number(number: int, text: str):
     """
-    Finds the element at the given coordinates (x, y)
+    Finds the element at the given box label number from OmniParser
     and fills it with the specified text.
     """
     global page, MOST_RECENT_CLICK
     # print("In function call `type_text_by_box_label_number`...")
-    
-    # try:
-    if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
-    current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
-    if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
-    if len(current_image_parse_metadata) <= number:
-        return f"[❌] Error: There is no box labeled by number {number}."
-    item = current_image_parse_metadata[number]
-    item = ParsedItemDetails.model_validate_json(item)
-    center_x = (item.bbox[0] + item.bbox[2]) / 2
-    center_y = (item.bbox[1] + item.bbox[3]) / 2
-    # Use JS to find the element at those coordinates
-    element_handle = await page.evaluate_handle(
-        """([x, y]) => document.elementFromPoint(x, y)""",
-        [center_x, center_y],
-    )
-    if not element_handle:
-        return f"[❌] Error: No element found at ({center_x}, {center_y})"
-    # Wrap it back into a Playwright ElementHandle
-    element = element_handle.as_element()
-    if element is None:
-        return f"[❌] Error: Element at ({center_x}, {center_y}) is not a valid input element"
-    # Optional: check visibility
-    if not await element.is_visible():
-        return f"[⚠️] Error: Element at ({center_x}, {center_y}) is not visible"
-    # Fill the element
-    await element.click()
-    await element.fill(text)
-    await element.press("Enter")
-    time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
-    bbox = await element.bounding_box()
-    MOST_RECENT_CLICK = bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2
-    return f"[✅] Success: Filled element at ({center_x}, {center_y}) with text: {text}"
-    # except Exception as e:
-    #     return str(e)
+
+    try:
+        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH):
+            return "[❌] Error: There are no labeled boxes."
+        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
+        if current_image_parse_metadata is None:
+            return "[❌] Error: Image parse metadata is `null`. Try again."
+        if len(current_image_parse_metadata) <= number:
+            return f"[❌] Error: There is no box labeled by number {number}."
+
+        item = current_image_parse_metadata[number]
+        item = ParsedItemDetails.model_validate_json(item)
+
+        # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
+        center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
+        center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
+
+        # Convert relative coordinates to absolute viewport coordinates
+        # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
+        vx = center_x_relative * page._page.viewport_size['width']
+        vy = center_y_relative * page._page.viewport_size['height']
+
+        # Use JS to find the element at those coordinates
+        element_handle = await page.evaluate_handle(
+            """([x, y]) => document.elementFromPoint(x, y)""",
+            [vx, vy],
+        )
+        if not element_handle:
+            return f"[❌] Error: No element found at viewport ({vx:.1f}, {vy:.1f})"
+
+        # Wrap it back into a Playwright ElementHandle
+        element = element_handle.as_element()
+        if element is None:
+            return f"[❌] Error: Element at viewport ({vx:.1f}, {vy:.1f}) is not a valid input element"
+
+        # Optional: check visibility
+        if not await element.is_visible():
+            return f"[⚠️] Error: Element at viewport ({vx:.1f}, {vy:.1f}) is not visible"
+
+        # Fill the element
+        await element.click()
+        await element.fill(text)
+        await element.press("Enter")
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
+
+        # Store absolute click coordinates for visual feedback
+        bbox = await element.bounding_box()
+        MOST_RECENT_CLICK = (bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2)
+
+        return f"[✅] Success: Filled element labeled {number} at viewport ({vx:.1f}, {vy:.1f}) with text: {text}"
+    except Exception as e:
+        return f"[❌] Error: {str(e)}"
 
 @mcp.tool
 async def fill_all_text_boxes_with(text: str):
