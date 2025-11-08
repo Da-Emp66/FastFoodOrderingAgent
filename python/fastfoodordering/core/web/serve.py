@@ -40,7 +40,7 @@ async def stream_browser(websocket: WebSocket):
             success, jpeg = cv2.imencode(".jpeg", cv2.imread(image_path))
             if success:
                 await websocket.send_bytes(jpeg.tobytes())
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY")))
     except WebSocketDisconnect:
         print("Client disconnected.")
     except Exception as e:

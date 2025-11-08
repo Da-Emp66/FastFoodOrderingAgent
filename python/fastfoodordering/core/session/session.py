@@ -182,7 +182,7 @@ class SessionManager:
                             print(f"WebSocket closed, reconnecting to {session_url}")
                             break
 
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY")))
 
             except Exception as e:
                 BACKEND_LOGGER.error(f"Error in screenshot generator: {e}\n{traceback.format_exc()}")
@@ -191,7 +191,7 @@ class SessionManager:
                 BACKEND_LOGGER.info(f"Closing {user} websocket connection to session {session_id}")
 
             # Short delay before attempting reconnect
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_RETRY_DELAY")))
 
     # def screenshot(self, user: str, session_id: str) -> cv2.typing.MatLike:
     #     session = self.sessions.get(user, {}).get(session_id, None)

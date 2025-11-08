@@ -1,4 +1,5 @@
 import abc
+import base64
 from dataclasses import dataclass
 import functools
 import importlib
@@ -12,6 +13,7 @@ import socket
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import warnings
+import cv2
 import typing_extensions
 from box import Box
 import dspy
@@ -27,6 +29,10 @@ from pydantic import BaseModel, create_model
 import yaml
 
 FINISH_TOKEN = "<|COMPLETED_OVERALL_TASK|>"
+
+#########################################################
+### Configuration
+#########################################################
 
 T = type
 _BasicConfigType = Union[Box, dict, str]
@@ -118,6 +124,17 @@ def populate_environment_specifications(spec: Union[str, Dict[str, Any]], **kwar
 def extract_final_message_content(response: str):
     """Returns only the final response, with all proper thinking tokens and sections removed."""
     return response.split("|>")[-1]
+
+
+class BaseModelJSONEncoder(json.JSONEncoder):
+    def default(self, obj: Any):
+        if isinstance(obj, BaseModel):
+            return obj.model_dump_json()
+        return super().default(obj)
+
+#########################################################
+### Tools
+#########################################################
 
 class CustomToolSpecification(BaseModel):
     function_name: Optional[str]

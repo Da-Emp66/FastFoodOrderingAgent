@@ -1,0 +1,11 @@
+services:
+  test:
+    image: nvidia/cuda:13.0.2-base-ubuntu22.04
+    command: nvidia-smi
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
