@@ -51,7 +51,9 @@ class DSPyPlanner:
             "Only reference buttons and items directly visible in the 'current_browser_screenshot'. If a required button is not directly visible," \
             "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click." \
             "If another click is required, you should include that in the next subtask." \
-            "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything."
+            "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything." \
+            "NOTE: If there is a pop-up blocking a button on the screen, close out of that pop-up first before any other steps." \
+            "NOTE: Always share your location with the browser."
         )
         tools: list[dspy.Tool] = dspy.InputField(
             desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language."

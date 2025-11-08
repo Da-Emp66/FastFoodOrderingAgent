@@ -15,7 +15,7 @@ services:
       PARSER_PORT: ${PARSER_PORT:-8055}
       DEVICE: ${PARSER_DEVICE:-cpu}
       USE_LOCAL_SEMANTICS: false
-      ANNOTATION_SCALE_FACTOR: 2
+      ANNOTATION_SCALE_FACTOR: 4
     deploy:
       resources:
         reservations:

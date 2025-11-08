@@ -41,13 +41,22 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
         current_browser_snapshot = None
     ) -> GeneratedTool:
         tool_options = list(self.tools.keys())
-        cv2.imwrite("tmp.jpg", current_browser_screenshot)
+        if current_browser_screenshot is not None:
+            print("Writing current_browser_screenshot to tmp.jpg...")
+            cv2.imwrite("tmp.jpg", current_browser_screenshot)
+            print("Done writing current_browser_screenshot.")
         with guidance_user():
-            self.lm += guidance_image("tmp.jpg") + \
-                self.configuration.tool_selection_user_prompt_format \
-                    .replace("{overall_goal}", overall_goal) \
-                    .replace("{subtask}", subtask) \
-                    .replace("{tool_options}", yaml.safe_dump(tool_options))
+            if current_browser_screenshot is not None:
+                self.lm += guidance_image("tmp.jpg") + \
+                    self.configuration.tool_selection_user_prompt_format \
+                        .replace("{overall_goal}", overall_goal) \
+                        .replace("{subtask}", subtask) \
+                        .replace("{tool_options}", yaml.safe_dump(tool_options))
+            else:
+                self.lm += self.configuration.tool_selection_user_prompt_format \
+                        .replace("{overall_goal}", overall_goal) \
+                        .replace("{subtask}", subtask) \
+                        .replace("{tool_options}", yaml.safe_dump(tool_options))
         name = None
         with guidance_assistant():
             self.lm += generate_constrained_json(
