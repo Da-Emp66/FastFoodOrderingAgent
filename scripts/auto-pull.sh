@@ -46,8 +46,8 @@ else
         log_message "Successfully pulled latest changes"
         
         # Optional: Restart services after pull (uncomment if needed)
-        # log_message "Restarting Docker services..."
-        # docker compose down && docker compose up -d 2>&1 | tee -a "$LOG_FILE"
+        log_message "Restarting Docker services..."
+        docker compose down && docker compose up -d 2>&1 | tee -a "$LOG_FILE"
     else
         log_message "ERROR: Failed to pull changes"
         exit 1

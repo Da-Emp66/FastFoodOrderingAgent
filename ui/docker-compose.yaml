@@ -6,9 +6,12 @@ services:
       dockerfile: Dockerfile.dev
     env_file:
       - ../.env
-    ports:
-      - "3001:3000"
-      # - "24678:24678"  # HMR port
+    # Remove external port exposure - only accessible through nginx
+    # ports:
+    #   - "3001:3000"
+    #   # - "24678:24678"  # HMR port
+    expose:
+      - "3000"
     # volumes:
     #   - .:/app
     #   - /app/node_modules
