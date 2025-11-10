@@ -6,15 +6,16 @@ include:
 services:
   # Nginx reverse proxy with SSL/TLS
   nginx:
-    container_name: nginx-proxy
+    container_name: nginx-proxy-${INSTANCE_ID:-default}
     build:
       context: ./nginx
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "80:80"       # HTTP (redirects to HTTPS)
-      - "443:443"     # HTTPS - Main public access
-      - "8443:8443"   # HTTPS - Admin panel (optional)
+      - "${HTTP_PORT:-80}:80"       # HTTP (redirects to HTTPS)
+      - "${HTTPS_PORT:-443}:443"     # HTTPS - Main public access
+      - "${ADMIN_PORT:-8443}:8443"   # HTTPS - Admin panel (optional)
+
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
@@ -32,7 +33,7 @@ services:
   # Certbot for Let's Encrypt SSL certificates
   certbot:
     image: certbot/certbot
-    container_name: certbot
+    container_name: certbot-${INSTANCE_ID:-default}
     volumes:
       - certbot-conf:/etc/letsencrypt
       - certbot-www:/var/www/certbot
@@ -41,14 +42,14 @@ services:
       - default
 
   dozzle:
-    container_name: dozzle
+    container_name: dozzle-${INSTANCE_ID:-default}
     image: amir20/dozzle:latest
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Remove external port exposure - only accessible through nginx
-    # ports:
-    #   - 10000:8080
+    ports:
+      - "${DOZZLE_PORT:-10000}:8080"
     expose:
       - "8080"
     networks:
@@ -56,8 +57,11 @@ services:
 
 volumes:
   certbot-conf:
+    name: certbot-conf-${INSTANCE_ID:-default}
   certbot-www:
+    name: certbot-www-${INSTANCE_ID:-default}
   nginx-logs:
+    name: nginx-logs-${INSTANCE_ID:-default}
 
 networks:
   default:

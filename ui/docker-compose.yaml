@@ -1,15 +1,15 @@
 services:
   fastfoodordering-ui:
-    container_name: fastfoodordering-ui
+    container_name: fastfoodordering-ui-${INSTANCE_ID:-default}
     build:
       context: .
       dockerfile: Dockerfile.dev
     env_file:
       - ../.env
     # Remove external port exposure - only accessible through nginx
-    # ports:
-    #   - "3001:3000"
-    #   # - "24678:24678"  # HMR port
+    ports:
+      - "${UI_PORT:-3001}:3000"
+      # - "24678:24678"  # HMR port
     expose:
       - "3000"
     # volumes:

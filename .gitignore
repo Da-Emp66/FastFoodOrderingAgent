@@ -212,6 +212,7 @@ google-chrome-stable_current_amd64.deb
 # Project-specific folders
 scripts/internal/
 scripts/models/
+models/
 
 # MacOS-specific files
 .DS_Store
