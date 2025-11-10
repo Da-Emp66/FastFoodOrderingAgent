@@ -51,6 +51,14 @@ case "$1" in
         docker compose -p fastfood-instance-2 --env-file .env.instance2 up -d
         echo "Instance 2 restarted!"
         ;;
+    restart-all)
+        echo "Restarting all instances..."
+        docker compose -p fastfood-instance-1 --env-file .env.instance1 down
+        docker compose -p fastfood-instance-2 --env-file .env.instance2 down
+        docker compose -p fastfood-instance-1 --env-file .env.instance1 up -d
+        docker compose -p fastfood-instance-2 --env-file .env.instance2 up -d
+        echo "All instances restarted!"
+        ;;
     status)
         echo "=== Instance 1 Containers ==="
         docker ps -a | grep -E "(fast-food-1|instance-1|INSTANCE_ID.*1)" || echo "No containers found"
@@ -59,7 +67,7 @@ case "$1" in
         docker ps -a | grep -E "(fast-food-2|instance-2|INSTANCE_ID.*2)" || echo "No containers found"
         ;;
     *)
-        echo "Usage: $0 {start-1|start-2|start-all|stop-1|stop-2|stop-all|restart-1|restart-2|status}"
+        echo "Usage: $0 {start-1|start-2|start-all|stop-1|stop-2|stop-all|restart-1|restart-2|restart-all|status}"
         echo ""
         echo "Commands:"
         echo "  start-1      - Start Instance 1 (ports 80, 443, 8443, 8000)"
@@ -70,6 +78,7 @@ case "$1" in
         echo "  stop-all     - Stop all instances"
         echo "  restart-1    - Restart Instance 1"
         echo "  restart-2    - Restart Instance 2"
+        echo "  restart-all  - Restart all instances"
         echo "  status       - Show status of all instances"
         exit 1
         ;;

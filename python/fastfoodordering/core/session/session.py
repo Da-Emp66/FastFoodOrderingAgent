@@ -98,8 +98,35 @@ class SessionManager:
         
         # Outer key is user, inner key is session_id
         self.sessions: Dict[str, Dict[str, Session]] = {}
+        
+        # Single-user-per-instance lock
+        self.active_user: Optional[str] = None  # Currently locked user
+        self.last_activity: Optional[float] = None  # Timestamp of last activity
     
     async def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+        # Check and enforce single-user-per-instance lock
+        current_time = time.time()
+        TIMEOUT = 3600  # 1 hour timeout
+        
+        # Release lock if timeout expired
+        if self.active_user and self.last_activity and (current_time - self.last_activity > TIMEOUT):
+            BACKEND_LOGGER.info(f"Lock timeout expired for user {self.active_user}")
+            self.active_user = None
+        
+        # Check if instance is locked by another user
+        if self.active_user and self.active_user != prompt.user:
+            BACKEND_LOGGER.warning(f"User {prompt.user} attempted to access instance locked by {self.active_user}")
+            return SessionManagerChatResult(
+                response=f"This instance is currently in use by another user. Please try again later or use a different instance.",
+                session_id=None
+            )
+        
+        # Acquire lock for this user
+        if not self.active_user:
+            BACKEND_LOGGER.info(f"User {prompt.user} acquired instance lock")
+        self.active_user = prompt.user
+        self.last_activity = current_time
+        
         session_id = None
         await self.tool_caller.initialize_tools()
         # Determine what to do and inform the user
