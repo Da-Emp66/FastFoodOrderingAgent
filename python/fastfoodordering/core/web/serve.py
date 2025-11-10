@@ -8,6 +8,7 @@ from dotenv import find_dotenv, load_dotenv
 import dspy
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uvicorn
 
 from core.session.session import Session, SessionCompletionStatus
@@ -26,6 +27,12 @@ app.add_middleware(
     allow_methods=["*"], # Allow all HTTP methods (GET, POST, etc.)
     allow_headers=["*"], # Allow all headers
 )
+
+class BrowserClickCoordinates(BaseModel):
+    x: float
+    """Relative X coordinate (0-1 range)"""
+    y: float
+    """Relative Y coordinate (0-1 range)"""
 
 @app.websocket("/active-session/view")
 async def stream_browser(websocket: WebSocket):
@@ -61,6 +68,32 @@ def update_overall_goal(session: Session):
     assert session.session_id == shared.this_session.original_spec.session_id
     shared.this_session.current_spec.objective_spec.objective = session.objective_spec.objective
     return Response(status_code=200)
+
+@app.post("/active-session/click")
+async def handle_click(coordinates: BrowserClickCoordinates):
+    """Handle a user click at relative coordinates (0-1 range)."""
+    try:
+        # Get the browser agent's tool caller
+        agent = shared.this_session.web_agent
+
+        # Get viewport size from the page
+        page = agent.tool_caller.page if hasattr(agent.tool_caller, 'page') else None
+        if page is None:
+            return Response(status_code=400, content="Browser page not available")
+
+        # Convert relative coordinates to absolute pixel coordinates
+        viewport_width = page._page.viewport_size['width']
+        viewport_height = page._page.viewport_size['height']
+        abs_x = coordinates.x * viewport_width
+        abs_y = coordinates.y * viewport_height
+
+        # Perform the click
+        await page.mouse.click(abs_x, abs_y)
+
+        return Response(status_code=200)
+    except Exception as e:
+        print(f"Error handling click: {e}")
+        return Response(status_code=500, content=str(e))
 
 def main(args):
     print(f"Using MODEL=`{os.getenv('MODEL')}`", flush=True)

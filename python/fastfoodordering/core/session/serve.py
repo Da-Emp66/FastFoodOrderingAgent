@@ -10,9 +10,10 @@ import cv2
 import docker
 from dotenv import find_dotenv, load_dotenv
 import dspy
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+import httpx
 import litellm
 from pydantic import BaseModel
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
@@ -25,6 +26,7 @@ from core.session.session import (
     SessionManagerChatResult,
     SessionManagerPrompt,
 )
+from core.utils import populate_environment_specifications
 
 # Load environment variables
 dotenv_to_use = find_dotenv()
@@ -60,6 +62,12 @@ class SessionId(BaseModel):
 
 class BrowserBase64Screenshot(BaseModel):
     b64_encoded_image: str
+
+class BrowserClickCoordinates(BaseModel):
+    x: float
+    """Relative X coordinate (0-1 range)"""
+    y: float
+    """Relative Y coordinate (0-1 range)"""
 
 @app.post("/chat")
 def chat(prompt: SimplePrompt) -> SimpleResponse:
@@ -117,6 +125,45 @@ def stream_screenshot(user: str, session_id: str): # -> Union[StreamingResponse,
     # Return an jpeg image response
     except Exception:
         return FileResponse(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH, media_type="image/jpeg")
+
+@app.post("/{user}/sessions/{session_id}/click")
+async def handle_browser_click(user: str, session_id: str, coordinates: BrowserClickCoordinates):
+    """Forward a user click to the web agent container."""
+    try:
+        # Get the container name for this session
+        container_spec = populate_environment_specifications(
+            shared.session_manager.configuration.web_agent_spec,
+            _DYN_WEB_AGENT_USER=user,
+            _DYN_WEB_AGENT_SESSION_ID=session_id,
+        )
+        container_url = f"http://{container_spec['name']}:9000/active-session/click"
+
+        # Forward the click to the web agent container
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                container_url,
+                json={"x": coordinates.x, "y": coordinates.y},
+                timeout=10.0
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Web agent returned error: {response.text}"
+                )
+
+        return {"status": "success"}
+
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not connect to web agent: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error forwarding click: {str(e)}"
+        )
 
 def on_exit():
     print("Performing exit sequence...")
