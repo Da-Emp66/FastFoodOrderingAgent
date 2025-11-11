@@ -6,7 +6,7 @@ export default function TTS() {
   const [text, setText] = useState("Hi Jose! This is a basic text-to-speech test running in your React app on Ubuntu.");
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [voiceURI, setVoiceURI] = useState<string>("");
-  const [rate, setRate] = useState(1);
+  const [rate, setRate] = useState(1.0);
   const [pitch, setPitch] = useState(1);
   const [speaking, setSpeaking] = useState(false);
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -35,7 +35,7 @@ export default function TTS() {
     utterRef.current = null;
   };
 
-  const speak = () => {
+  const speak = (delay = 1000) => {
     if (!("speechSynthesis" in window)) {
       alert("This browser does not support speechSynthesis. Try Chromium/Chrome.");
       return;
@@ -53,7 +53,9 @@ export default function TTS() {
     u.onerror = () => { setSpeaking(false); utterRef.current = null; };
 
     utterRef.current = u;
-    window.speechSynthesis.speak(u);
+    setTimeout(() => {
+      window.speechSynthesis.speak(u);
+    }, delay);
   };
 
   return (

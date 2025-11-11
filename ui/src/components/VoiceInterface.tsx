@@ -15,6 +15,7 @@ import {
 import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close, FullscreenExit } from '@mui/icons-material';
 import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick } from '../services/api';
 import { useGeolocation } from '../hooks/useGeolocation';
+import { playCoquiTTS } from "../services/tts";
 
 interface Message {
   id: string;
@@ -92,16 +93,6 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
-      //Speak the error aloud using TTS
-      try {
-        const utterance = new SpeechSynthesisUtterance(errorMessage.text);
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        window.speechSynthesis.cancel(); // stop any ongoing speech
-        window.speechSynthesis.speak(utterance);
-      } catch (ttsError) {
-        console.error('TTS failed to speak error:', ttsError);
-      }
     } finally {
       setIsLoadingResponse(false);
     }
@@ -112,24 +103,50 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   useEffect(() => {
     if (initialQuery && !hasProcessedInitialQuery.current) {
       hasProcessedInitialQuery.current = true;
-      handleSendMessage(initialQuery);
+
+      (async () => {
+        // 1. Speak greeting first
+        const text = `Okay, I heard you say ${initialQuery}. Let's start placing your order.`;
+        const ok = await playCoquiTTS(text);
+        if (ok) window.speechSynthesis.cancel();
+
+        // 2. Wait for the greeting to finish (roughly)
+        //    assuming average speaking speed ~150 words/min
+        const duration = text.split(" ").length * 400; // 0.4s per word
+        await new Promise(resolve => setTimeout(resolve, duration));
+
+        // 3. Now send message to backend
+        await handleSendMessage(initialQuery);
+      })();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+
   // Speak the latest AI response
   useEffect(() => {
     if (messages.length === 0) return;
     const last = messages[messages.length - 1];
 
-    // Only speak non-user messages (AI responses)
     if (!last.isUser && last.text) {
-      const utter = new SpeechSynthesisUtterance(last.text);
-      utter.rate = 1;
-      utter.pitch = 1;
-      window.speechSynthesis.cancel(); // Stop any ongoing speech
-      window.speechSynthesis.speak(utter);
+      (async () => {
+        const ok = await playCoquiTTS(last.text);
+
+        if (ok) {
+          // Coqui succeeded → prevent double playback
+          window.speechSynthesis.cancel();
+        } else {
+          // Fallback to browser voice
+          const utter = new SpeechSynthesisUtterance(last.text);
+          utter.rate = 1;
+          utter.pitch = 1;
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utter);
+        }
+      })();
     }
   }, [messages]);
+
+
   const startListening = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

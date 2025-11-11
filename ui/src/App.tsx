@@ -47,16 +47,6 @@ function App() {
     }
   };
 
-  // ✅ New effect: when entering 'voice' state, automatically trigger TTS
-  useEffect(() => {
-    if (currentState === 'voice' && hungryQuery) {
-      const utterance = new SpeechSynthesisUtterance(
-        `Okay, I heard you say ${hungryQuery}. Let's start placing your order.`
-      );
-      window.speechSynthesis.speak(utterance);
-    }
-  }, [currentState, hungryQuery]);
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />

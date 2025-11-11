@@ -14,3 +14,14 @@ services:
     #   - /app/node_modules
     # environment:
     #   - CHOKIDAR_USEPOLLING=true
+
+  coqui-tts:
+    container_name: coqui-tts
+    build:
+      context: ./coqui_service
+      dockerfile: Dockerfile
+    ports:
+      - "5055:5055"
+    volumes:
+      - ~/.local/share/tts:/root/.local/share/tts
+    restart: unless-stopped
