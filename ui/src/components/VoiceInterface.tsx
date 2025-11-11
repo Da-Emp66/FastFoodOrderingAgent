@@ -92,6 +92,16 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+      //Speak the error aloud using TTS
+      try {
+        const utterance = new SpeechSynthesisUtterance(errorMessage.text);
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        window.speechSynthesis.cancel(); // stop any ongoing speech
+        window.speechSynthesis.speak(utterance);
+      } catch (ttsError) {
+        console.error('TTS failed to speak error:', ttsError);
+      }
     } finally {
       setIsLoadingResponse(false);
     }
@@ -106,7 +116,20 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Speak the latest AI response
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
 
+    // Only speak non-user messages (AI responses)
+    if (!last.isUser && last.text) {
+      const utter = new SpeechSynthesisUtterance(last.text);
+      utter.rate = 1;
+      utter.pitch = 1;
+      window.speechSynthesis.cancel(); // Stop any ongoing speech
+      window.speechSynthesis.speak(utter);
+    }
+  }, [messages]);
   const startListening = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
