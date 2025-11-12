@@ -51,7 +51,7 @@ function App() {
   useEffect(() => {
     if (currentState === 'voice' && hungryQuery) {
       const utterance = new SpeechSynthesisUtterance(
-        `Okay, I heard you say ${hungryQuery}. Let's start placing your order.`
+        `Okay, I heard you say ${hungryQuery}. Let's start working on your order.`
       );
       window.speechSynthesis.speak(utterance);
     }

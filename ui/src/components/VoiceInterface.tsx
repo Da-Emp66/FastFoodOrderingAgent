@@ -15,6 +15,7 @@ import {
 import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close, FullscreenExit } from '@mui/icons-material';
 import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick } from '../services/api';
 import { useGeolocation } from '../hooks/useGeolocation';
+import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 
 interface Message {
   id: string;
@@ -45,6 +46,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   const [clickIndicators, setClickIndicators] = useState<ClickIndicator[]>([]);
   const [username] = useState(() => localStorage.getItem('username') || 'user');
   const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
+  const { speak } = useSpeechSynthesis();
 
   // Get user's geolocation
   const { location: geolocation, error: geoError, loading: geoLoading } = useGeolocation();
@@ -83,6 +85,8 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         timestamp: new Date()
       };
       setMessages(prev => [...prev, aiMessage]);
+      speak(response.response);
+
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
