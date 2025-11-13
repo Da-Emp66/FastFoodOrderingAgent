@@ -1,16 +1,28 @@
 import base64
 import enum
+import hashlib
 import json
 import os
+import threading
 import time
 from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, Union
+import typing_extensions
 import cv2
 import dspy
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 import requests
 
-from core.utils import FINISH_TOKEN, BaseModelJSONEncoder, ToolReport, from_config
+from core.utils import (
+    FINISH_TOKEN,
+    BaseModelJSONEncoder,
+    GeneratedToolSpec,
+    ImageResizeConfiguration,
+    Relative2DScale,
+    ToolReport,
+    from_config,
+    resize_cv2_image,
+)
 from core.web.interface import BrowserVisibilityMode
 from core.web.planning.interface import PlannerTypes
 from core.web.planning.dspy_planner import DSPyPlanner, DSPyPlannerConfiguration
@@ -50,9 +62,40 @@ class ParserMode(str, enum.Enum):
     Enabled = "enabled"
     Disabled = "disabled"
 
+class ExtractionConfiguration(BaseModel):
+    enable_region_blacklisting: bool = os.getenv("ENABLE_REGION_BLACKLISTING", True)
+    iou_threshold: float = os.getenv("BLACKLIST_IOU_THRESHOLD", 0.7)
+    image_hashing_function: str = "sha256"
+
 class ParserConfiguration(BaseModel):
     parser_mode: ParserMode = os.getenv("PARSER_MODE", ParserMode.Enabled)
     parser_uri: str = "http://" + os.getenv("PARSER_HOST", "localhost") + ":" + os.getenv("PARSER_PORT", "8055")
+    extraction_configuration: ExtractionConfiguration = ExtractionConfiguration()
+
+class FilterConfig(BaseModel):
+    banned_regions: List[List[float]]
+    """xyxy bboxes to blacklist in image parsing."""
+    iou_threshold: float
+
+class ParseRequestConfiguration(BaseModel):
+    filter: FilterConfig
+
+class ParseRequest(BaseModel):
+    base64_image: str
+    configuration: Optional[ParseRequestConfiguration] = None
+
+class StrategyRepeatedScreenshots(typing_extensions.TypedDict):
+    delay_seconds: float
+
+class ScreenshotStrategy(str, enum.Enum):
+    ExternalRepeated = "externalrepeated"
+    """Repeatedly take screenshots outside of the browser agent."""
+    OnBrowserAgent = "onbrowseragent"
+    """Allow the browser agent class to directly call to screenshot."""
+
+class ScreenshotConfiguration(BaseModel):
+    strategy: ScreenshotStrategy = os.getenv("SCREENSHOT_STRATEGY", ScreenshotStrategy.OnBrowserAgent)
+    spec: Union[Dict[str, Any], StrategyRepeatedScreenshots] = {}
 
 class BrowserAgentConfiguration(BaseModel):
     tool_mode: ToolModes = ToolModes.Constrained
@@ -61,6 +104,8 @@ class BrowserAgentConfiguration(BaseModel):
     planner: Union[Dict[str, Any]] = DSPyPlannerConfiguration()
     browser_visibility_mode: BrowserVisibilityMode = BrowserVisibilityMode.Default
     parser: ParserConfiguration = ParserConfiguration()
+    image_resize_configuration: ImageResizeConfiguration = Relative2DScale()
+    screenshot_call_configuration: ScreenshotConfiguration = ScreenshotConfiguration()
 
 class BrowserAgentSystem:
     def __init__(self, configuration: Union[BrowserAgentConfiguration, Any]):
@@ -75,20 +120,40 @@ class BrowserAgentSystem:
             case ToolModes.StageHand: self.tool_caller = StageHandBrowserToolCaller(self.configuration.tools)
             case _: self.tool_caller = None
         self.history = dspy.History(messages=[])
-        self.screenshot = None
+        if self.configuration.parser.extraction_configuration.enable_region_blacklisting:
+            # This acts as an enforcement policy not to click on
+            # bboxes that we have already clicked on in images
+            # we have already seen. Key is the screenshot hash
+            # for each of these blacklist mappings.
+            self.blacklisted_xyxy_regions: Dict[str, List[List[float]]] = {}
+            self.blacklisted_tool_calls: Dict[str, GeneratedToolSpec] = {}
     
     async def __call__(self):
         return await self.process_request()
     
     async def process_request(self):
-        print("In call", flush=True)
+        print("In process_request", flush=True)
+        if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.ExternalRepeated:
+            self.screenshot_thread_stopped = False
+            self.screenshot_thread = threading.Thread(target=self.screenshot_until_stopped)
         async for task_result in self.iterate_task():
-            print("iteration", flush=True)
+            print("Iteration complete.", flush=True)
             if task_result == FINISH_TOKEN:
-                print(FINISH_TOKEN)
+                print(f"Received finish token: {FINISH_TOKEN}")
+
+                if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.ExternalRepeated:
+                    self.screenshot_thread_stopped = True
+                    print("Waiting for screenshot thread to stop...")
+                    self.screenshot_thread.join()
+                    print("Screenshot thread joined. Request processed.")
                 return
             else:
-                print(task_result)
+                print(f"Task result: {task_result}")
+
+    async def screenshot_until_stopped(self):
+        while not self.screenshot_thread_stopped:
+            await self.tool_caller.screenshot()
+            time.sleep(self.configuration.screenshot_call_configuration.spec.get("delay_seconds", 0.1))
 
     async def show_browser(self, image: cv2.typing.MatLike):
         cv2.imshow('Browser Watcher', image)
@@ -108,6 +173,8 @@ class BrowserAgentSystem:
         # Vars
         previous_browser_screenshot = None
         current_browser_screenshot = None
+        previous_browser_screenshot_preprocessed = previous_browser_screenshot
+        current_browser_screenshot_preprocessed = current_browser_screenshot
         current_browser_snapshot = "None"
         previous_subtask = "None"
         previous_tool_call = "None"
@@ -136,8 +203,8 @@ class BrowserAgentSystem:
                     previous_subtask=previous_subtask,
                     previous_tool_call=previous_tool_call,
                     previous_tool_call_output=previous_tool_call_output,
-                    previous_browser_screenshot=previous_browser_screenshot,
-                    current_browser_screenshot=current_browser_screenshot,
+                    previous_browser_screenshot=previous_browser_screenshot_preprocessed,
+                    current_browser_screenshot=current_browser_screenshot_preprocessed,
                     current_browser_snapshot=current_browser_snapshot,
                     tool_caller=self.tool_caller,
                     history=self.history,
@@ -150,34 +217,25 @@ class BrowserAgentSystem:
             print("Taking pre-action browser screenshot...", flush=True)
             # Take a screenshot of the browser before the tool call
             previous_browser_screenshot = current_browser_screenshot
-            current_browser_screenshot = await self.tool_caller.screenshot()
-            self.screenshot = current_browser_screenshot
-            if current_browser_screenshot is not None:
-                print(current_browser_screenshot.shape, flush=True)
-                if self.configuration.parser.parser_mode == ParserMode.Enabled:
-                    print("Parsing details...")
-                    parsed_details = self.parse_details(current_browser_screenshot)
-                    if parsed_details is not None:
-                        open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH, 'w').write(json.dumps(parsed_details.parsed_content_list, cls=BaseModelJSONEncoder))
-                        parsed_image = parsed_details.matlike_image()
-                        current_browser_screenshot = parsed_image
-                        print(f"Parsing took {parsed_details.latency} seconds")
-                    else:
-                        print("Parsing failed. See server logs for more details.")
-                print(current_browser_screenshot.shape, flush=True)
-                current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
-            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug and current_browser_screenshot is not None: await self.show_browser(current_browser_screenshot)
+            raw_browser_screenshot_before_action = await self.get_current_browser_screenshot(screenshot_save_path=shared.CURRENT_SCREENSHOT_PATH)
+            current_browser_screenshot = None if raw_browser_screenshot_before_action is None else raw_browser_screenshot_before_action.copy()
+
+            print("Pre-action browser screenshot obtained.", flush=True)
+            previous_browser_screenshot_preprocessed = current_browser_screenshot_preprocessed
+            current_browser_screenshot_preprocessed = self.preprocess_image_for_llm(current_browser_screenshot, image_metadata_save_path=shared.CURRENT_IMAGE_PARSE_METADATA_PATH)
+            
+            # Show the browser if in debug mode
+            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug and current_browser_screenshot_preprocessed is not None: await self.show_browser(current_browser_screenshot_preprocessed)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             if current_browser_snapshot is not None: print(current_browser_snapshot, flush=True)
-            print("Pre-action browser screenshot obtained.", flush=True)
 
             ### Step 2: Determine, process, and call the tool
             print("Determining tool to call...", flush=True)
             generated_tool = await self.tool_caller.determine_tool(
                 overall_goal=overall_goal,
                 subtask=subtask,
-                previous_browser_screenshot=previous_browser_screenshot,
-                current_browser_screenshot=current_browser_screenshot,
+                previous_browser_screenshot=previous_browser_screenshot_preprocessed,
+                current_browser_screenshot=current_browser_screenshot_preprocessed,
                 current_browser_snapshot=current_browser_snapshot,
             )
             print(f"Tool to call determined to be: {generated_tool}", flush=True)
@@ -187,9 +245,7 @@ class BrowserAgentSystem:
             print(f"Calling generated tool...", flush=True)
             tool_prediction_response = generated_tool.spec.model_dump_json()
             tool_call_result = await self.tool_caller.call_tool(generated_tool)
-            previous_tool_call = tool_prediction_response
-            previous_tool_call_output = tool_call_result
-            print(tool_call_result, flush=True)
+            previous_tool_call, previous_tool_call_output = tool_prediction_response, tool_call_result
             yield ToolReport(
                 generated_tool=generated_tool,
                 result=tool_call_result,
@@ -199,23 +255,19 @@ class BrowserAgentSystem:
             # Take a screenshot of the browser after the tool was called
             print("Taking post-action browser screenshot...", flush=True)
             previous_browser_screenshot = current_browser_screenshot
-            current_browser_screenshot = await self.tool_caller.screenshot()
-            self.screenshot = current_browser_screenshot
-            if current_browser_screenshot is not None:
-                print(current_browser_screenshot.shape, flush=True)
-                if self.configuration.parser.parser_mode == ParserMode.Enabled:
-                    print("Parsing details...")
-                    parsed_details = self.parse_details(current_browser_screenshot)
-                    if parsed_details is not None:
-                        open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH, 'w').write(json.dumps(parsed_details.parsed_content_list, cls=BaseModelJSONEncoder))
-                        parsed_image = parsed_details.matlike_image()
-                        current_browser_screenshot = parsed_image
-                        print(f"Parsing took {parsed_details.latency} seconds")
-                    else:
-                        print("Parsing failed. See server logs for more details.")
-                print(current_browser_screenshot.shape, flush=True)
-                current_browser_screenshot = cv2.resize(current_browser_screenshot, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
-            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug and current_browser_screenshot is not None: await self.show_browser(current_browser_screenshot)
+            current_browser_screenshot = await self.get_current_browser_screenshot(screenshot_save_path=shared.CURRENT_SCREENSHOT_PATH)
+            previous_browser_screenshot_preprocessed = current_browser_screenshot_preprocessed
+            current_browser_screenshot_preprocessed = self.preprocess_image_for_llm(current_browser_screenshot, image_metadata_save_path=shared.CURRENT_IMAGE_PARSE_METADATA_PATH)
+
+            raw_browser_screenshot_before_action_hash = self.hash_image(raw_browser_screenshot_before_action)
+            current_browser_screenshot_hash = self.hash_image(current_browser_screenshot)
+            if raw_browser_screenshot_before_action_hash == current_browser_screenshot_hash:
+                print("Tool call failure detected. Screenshot after action is the same as screenshot before action. Logging this failure.")
+
+                print(f"Tool call {previous_tool_call} banned on this screen.")
+
+            # Show the browser if in debug mode
+            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug and current_browser_screenshot_preprocessed is not None: await self.show_browser(current_browser_screenshot_preprocessed)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             print("Post-action browser screenshot obtained.", flush=True)
 
@@ -235,17 +287,76 @@ class BrowserAgentSystem:
         await self.close_tools()
         yield FINISH_TOKEN
 
-    def parse_details(self, image: cv2.typing.MatLike) -> Optional[ParserDetails]:
+    async def get_current_browser_screenshot(self, screenshot_save_path: str):
+        if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent or not os.path.exists(screenshot_save_path):
+            return await self.tool_caller.screenshot()
+        elif self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.ExternalRepeated and os.path.exists(screenshot_save_path):
+            return cv2.imread(screenshot_save_path)
+        else:
+            raise Exception("Could not obtain the browser screenshot.")
+
+    def preprocess_image_for_llm(self, current_browser_screenshot: cv2.typing.MatLike, image_metadata_save_path: str):
+        if current_browser_screenshot is not None:
+            print(f"Screenshot shape: {current_browser_screenshot.shape}", flush=True)
+            if self.configuration.parser.parser_mode == ParserMode.Enabled:
+                print("Parsing details...", flush=True)
+                parsed_details = self.parse_details(
+                    current_browser_screenshot,
+                    configuration=ParseRequestConfiguration(
+                        filter=(
+                            None 
+                            if not self.configuration.parser.extraction_configuration.enable_region_blacklisting 
+                            else FilterConfig(
+                                banned_regions=self.blacklisted_xyxy_regions.get(self.hash_image(current_browser_screenshot), []),
+                                iou_threshold=self.configuration.parser.extraction_configuration.iou_threshold,
+                            )
+                        )
+                    )
+                )
+                if parsed_details is not None:
+                    # Update the parsed details shared with the tool server
+                    open(image_metadata_save_path, 'w').write(json.dumps(parsed_details.parsed_content_list, cls=BaseModelJSONEncoder))
+                    current_browser_screenshot = parsed_details.matlike_image()
+                    print(f"Parsing took {parsed_details.latency} seconds", flush=True)
+                else:
+                    print("Parsing failed. See server logs for more details.", flush=True)
+            current_browser_screenshot = resize_cv2_image(current_browser_screenshot, params=self.configuration.image_resize_configuration)
+        
+        return current_browser_screenshot
+
+    def parse_details(self, image: cv2.typing.MatLike, configuration: Optional[ParseRequestConfiguration] = None) -> Optional[ParserDetails]:
         _, buffer = cv2.imencode('.jpg', image)
         image_base64 = base64.b64encode(buffer).decode('utf-8')
-        # For now, just make the request twice because the image never comes back the first time.
-        # We probably need to investigate that and fix that in the omni parser fork itself, but
-        # that might take too much time.
-        response = requests.post(f"{self.configuration.parser.parser_uri}/parse", data=json.dumps({"base64_image": image_base64}))
-        # response = requests.post("http://localhost:8055/parse", data=json.dumps({"base64_image": image_base64}))
+        response = requests.post(
+            f"{self.configuration.parser.parser_uri}/parse",
+            data=ParseRequest(
+                base64_image=image_base64,
+                configuration=configuration,
+            ).model_dump_json(),
+        )
         try:
             response = response.json()
         except Exception as e:
             print(e)
             return None
         return ParserDetails.model_validate(response)
+
+    # def get_banned_regions(self, image: cv2.typing.MatLike) -> List[List[float]]:
+    #     if image_hash is not None:
+    #         return self.blacklist.get(image_hash, [])
+    #     else:
+    #         return []
+
+    def hash_image(self, image: cv2.typing.MatLike) -> Optional[str]:
+        if image is None:
+            return None
+        try:
+            img_bytes = image.tobytes()
+            h = hashlib.new(self.configuration.parser.extraction_configuration.image_hashing_function)
+            h.update(img_bytes)
+            image_hash = h.hexdigest()
+        except Exception as e:
+            print(f"Error hashing: {e}")
+            return None
+        return image_hash
+    

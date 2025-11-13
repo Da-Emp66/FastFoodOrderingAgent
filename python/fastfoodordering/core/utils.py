@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import sys
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import warnings
@@ -17,6 +18,7 @@ import cv2
 import typing_extensions
 from box import Box
 import dspy
+from fastmcp.tools.tool import FunctionTool as FastMCPFunctionTool
 from guidance import (
     json as generate_constrained_json,
     user as guidance_user,
@@ -142,11 +144,17 @@ class CustomToolSpecification(BaseModel):
     import_spec: Optional[str] = None
     """The filepath to the file the function is defined in."""
 
-LocalToolSpec = Union[str, CustomToolSpecification, Callable]
+LocalToolSpec = Union[str, CustomToolSpecification, Callable, FastMCPFunctionTool]
+
+class ToolImportHook(BaseModel):
+    spec: LocalToolSpec
+    args: List[Any] = []
+    kwargs: Dict[str, Any] = {}
 
 class MCPUserConfiguration(BaseModel):
     mcp_servers: Dict[str, StdioServerParameters] = {}
     custom_tools: List[LocalToolSpec] = []
+    import_hooks: List[ToolImportHook] = []
 
 class ApplicationConfiguration(BaseModel):
     agents: Dict[str, Any]
@@ -173,9 +181,14 @@ def find_or_return_function(function_spec: LocalToolSpec):
         filepath = function_spec.import_spec
         if function_name is None: return null_function
         if function_spec.import_spec is not None:
-            spec = importlib.util.spec_from_file_location("dynamic_module", filepath)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            module_name = f"dynamic_{os.path.basename(filepath).replace('.py', '')}"
+            if module_name in sys.modules:
+                module = sys.modules[module_name]
+            else:
+                spec = importlib.util.spec_from_file_location(module_name, filepath)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
             if hasattr(module, function_name):
                 return getattr(module, function_name)
             else:
@@ -183,7 +196,7 @@ def find_or_return_function(function_spec: LocalToolSpec):
         else:
             if function_name in globals():
                 try:
-                    return callable(globals().get(function_name))
+                    return globals().get(function_name)
                 except Exception as e:
                     NotImplementedError(
                         f"Tool with name `{function_name}` exists but is not callable. "
@@ -194,6 +207,8 @@ def find_or_return_function(function_spec: LocalToolSpec):
                     f"Function name {function_name} not defined in `globals()`. "
                     "Did you mean to pass an `import_spec` to the filepath where that function is defined in your `CustomToolSpecification`?"
                 )
+    elif isinstance(function_spec, FastMCPFunctionTool):
+        return function_spec.fn
     else:
         raise NotImplementedError(f"Function specification of type `{type(function_spec)}` not yet supported.")
 
@@ -390,6 +405,9 @@ class ConstrainedToolCaller(ToolCaller):
         for _session_name, session in self.mcp_sessions.items():
             session_tools = (await session.list_tools()).tools
             tools.update({tool.name: McpToolFunctionWrapper(tool=tool, session=session) for tool in session_tools})
+        for import_hook in self.configuration.import_hooks:
+            hook = find_or_return_function(import_hook.spec)
+            await hook(*import_hook.args, **import_hook.kwargs)
         for tool in self.configuration.custom_tools:
             tool = find_or_return_function(tool)
             if hasattr(tool, "__name__"):
@@ -457,7 +475,9 @@ class ConstrainedToolCaller(ToolCaller):
                 )
             )
 
-
+#########################################################
+### Image
+#########################################################
 
 class VisibleDotCoordinateOptions(BaseModel):
     radius: int = 10
@@ -519,3 +539,20 @@ def place_coordinate_on_image(
         print("Unsupported coordinate options. Failed to place coordinates on image.")
         return image_with_coordinate_embed
     return image_with_coordinate_embed
+
+class AbsolutePixelwiseSize(BaseModel):
+    width: int
+    height: int
+
+class Relative2DScale(BaseModel):
+    scale_x: float = 0.7
+    scale_y: float = 0.7
+
+ImageResizeConfiguration = Union[AbsolutePixelwiseSize, Relative2DScale]
+
+def resize_cv2_image(image: cv2.typing.MatLike, params: ImageResizeConfiguration):
+    if isinstance(params, Relative2DScale):
+        image = cv2.resize(image, None, fx=params.scale_x, fy=params.scale_y, interpolation=cv2.INTER_LINEAR)
+    elif isinstance(params, AbsolutePixelwiseSize):
+        image = cv2.resize(image, (params.width, params.height), interpolation=cv2.INTER_LINEAR)
+    return image

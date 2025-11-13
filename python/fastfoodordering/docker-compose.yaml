@@ -9,6 +9,7 @@ services:
     environment:
       - OPENAI_BASE_URL=http://host.docker.internal:8000
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - BROWSER_VISIBILITY_MODE=default
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:

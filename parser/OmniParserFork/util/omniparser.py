@@ -1,11 +1,17 @@
 import os
 
 from distutils.util import strtobool
-from util.utils import get_som_labeled_img, get_caption_model_processor, get_yolo_model, check_ocr_box
+
+from pydantic import BaseModel
+from util.utils import FilterConfig, get_som_labeled_img, get_caption_model_processor, get_yolo_model, check_ocr_box
 from PIL import Image
 import io
 import base64
-from typing import Dict
+from typing import Dict, Optional
+
+class ParseRequestConfiguration(BaseModel):
+    filter: FilterConfig = FilterConfig()
+
 class Omniparser(object):
     def __init__(self, config: Dict):
         self.config = config
@@ -17,7 +23,7 @@ class Omniparser(object):
         )
         print('Omniparser initialized!!!')
 
-    def parse(self, image_base64: str):
+    def parse(self, image_base64: str, additional_configuration: Optional[ParseRequestConfiguration] = None):
         image_bytes = base64.b64decode(image_base64)
         image = Image.open(io.BytesIO(image_bytes))
         print('image size:', image.size)
@@ -48,5 +54,6 @@ class Omniparser(object):
             iou_threshold=0.7,
             scale_img=False,
             batch_size=128,
+            filter_config=None if additional_configuration is None else additional_configuration.filter,
         )
         return dino_labled_img, parsed_content_list

@@ -6,6 +6,7 @@ import sys
 import os
 import time
 from pathlib import Path
+from typing import List, Optional
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,7 +14,7 @@ import argparse
 import uvicorn
 root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(root_dir)
-from util.omniparser import Omniparser
+from util.omniparser import Omniparser, ParseRequestConfiguration
 import torch
 
 def parse_arguments():
@@ -43,12 +44,16 @@ omniparser = Omniparser(config)
 
 class ParseRequest(BaseModel):
     base64_image: str
+    configuration: Optional[ParseRequestConfiguration] = None
 
 @app.post("/parse")
 async def parse(parse_request: ParseRequest):
     print('start parsing...')
     start = time.time()
-    dino_labled_img, parsed_content_list = omniparser.parse(parse_request.base64_image)
+    dino_labled_img, parsed_content_list = omniparser.parse(
+        parse_request.base64_image,
+        additional_configuration=parse_request.configuration,
+    )
     latency = time.time() - start
     print('time:', latency)
     if dino_labled_img is not None:

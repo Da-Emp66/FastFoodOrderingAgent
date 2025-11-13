@@ -113,7 +113,8 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
             if screenshot_filepath is None:
                 return None
             image = cv2.imread(screenshot_filepath)
-            if os.path.exists(screenshot_filepath) and \
+            if screenshot_filepath != os.getenv("CURRENT_SCREENSHOT_PATH", None) and \
+                os.path.exists(screenshot_filepath) and \
                 os.path.isfile(screenshot_filepath) and \
                 os.path.splitext(screenshot_filepath)[-1] in ["jpg", "jpeg", "png"]:
                     os.remove(screenshot_filepath)

@@ -5,15 +5,21 @@ tools:
       import_spec: core/web/toolserver.py
     - function_name: scroll
       import_spec: core/web/toolserver.py
-    - function_name: click_element_by_text
+    - function_name: click_element_by_its_text_content
       import_spec: core/web/toolserver.py
-    - function_name: click_element_by_text
+    - function_name: click_element_by_box_label_number
       import_spec: core/web/toolserver.py
-    - function_name: get_element_coordinates_by_text
+    - function_name: type_text_by_box_label_number
       import_spec: core/web/toolserver.py
-    - function_name: click_coordinates
+    - function_name: fill_all_text_boxes_with
       import_spec: core/web/toolserver.py
     # - function_name: null
+  import_hooks:
+    - spec:
+        function_name: init_globals
+        import_spec: core/web/toolserver.py
+      args: []
+      kwargs: {}
   browser_visibility:
     screenshot_tool_name: screenshot
     # snapshot_tool_name: browser_snapshot,
@@ -35,8 +41,7 @@ tools:
 planner:
   visibility_settings:
     tools_visible: True
-browser_visibility_mode: debug
-
+browser_visibility_mode: ${BROWSER_VISIBILITY_MODE}
 parser:
   parser_uri: http://${PARSER_HOST}:${PARSER_PORT}
   parser_mode: ${PARSER_MODE}

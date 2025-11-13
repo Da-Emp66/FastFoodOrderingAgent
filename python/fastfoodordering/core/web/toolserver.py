@@ -41,7 +41,7 @@ async def screenshot():
 @mcp.tool
 async def navigate(url: str):
     global page
-    # print("In function call `navigate`...")
+    print("In function call `navigate`...")
     try:
         await page.goto(url)
         await page._page.context.grant_permissions(["geolocation"])
@@ -216,7 +216,8 @@ async def fill_all_text_boxes_with(text: str):
 # async def find(description_of_thing_to_click_on: str):
 #     pass
 
-async def main():
+async def init_globals():
+    print("INSIDE INIT GLOBALS")
     # Initialize StageHand webpage
     global page
     stagehand_config = StagehandConfig(
@@ -225,6 +226,7 @@ async def main():
         model_api_key=os.getenv("OPENAI_API_KEY"),
         local_browser_launch_options={
             "headless": True,
+            # "headless": False,
             "ignoreDefaultArgs": ['--hide-scrollbars'],
         }
     )
@@ -237,8 +239,11 @@ async def main():
 
     # Ensure we do not wait more than 5 seconds
     # for failing tool calls
-    page._page.context.set_default_timeout(5000)
+    page._page.context.set_default_timeout(int(os.getenv("BROWSER_ACTION_TIMEOUT_MS", "5000")))
+    print("INIT GLOBALS COMPLETE")
 
+async def main():
+    await init_globals()
     # Run the MCP server
     await mcp.run_async()
 

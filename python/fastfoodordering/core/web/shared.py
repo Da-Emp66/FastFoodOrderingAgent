@@ -5,7 +5,6 @@ from pathlib import Path
 
 from core.session.session import CompletionStatus, ObjectiveSpecification, Session, SessionCompletionStatus
 from core.web.agent import BrowserAgentSystem
-from core.utils import FINISH_TOKEN
 
 MAX_TASK_ITERATIONS = os.getenv("MAX_TASK_ITERATIONS", -1)
 # MAX_WEBSOCKET_FAILURES = os.getenv("MAX_WEBSOCKET_FAILURES", -1)
@@ -52,14 +51,7 @@ class SessionInProgress:
         super().__setattr__(key, val)
 
     async def __call__(self, *args, **kwds):
-        print("In call", flush=True)
-        async for task_result in self.browser_agent.iterate_task():
-            print("iteration", flush=True)
-            if task_result == FINISH_TOKEN:
-                print(FINISH_TOKEN)
-                return
-            else:
-                print(task_result)
+        return await self.browser_agent()
 
 print(f"Session User: {os.getenv('SESSION_USER')}")
 print(f"Session ID: {os.getenv('SESSION_ID')}")
