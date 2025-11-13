@@ -556,3 +556,22 @@ def resize_cv2_image(image: cv2.typing.MatLike, params: ImageResizeConfiguration
     elif isinstance(params, AbsolutePixelwiseSize):
         image = cv2.resize(image, (params.width, params.height), interpolation=cv2.INTER_LINEAR)
     return image
+
+def IoU(boxA: List[float], boxB: List[float]):
+    # Unpack coordinates
+    xA1, yA1, xA2, yA2 = tuple(boxA)
+    xB1, yB1, xB2, yB2 = tuple(boxB)
+    # Compute intersection
+    x_left = max(xA1, xB1)
+    y_top = max(yA1, yB1)
+    x_right = min(xA2, xB2)
+    y_bottom = min(yA2, yB2)
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0  # No overlap
+    intersection = (x_right - x_left) * (y_bottom - y_top)
+    # Compute areas
+    areaA = (xA2 - xA1) * (yA2 - yA1)
+    areaB = (xB2 - xB1) * (yB2 - yB1)
+    # Compute union
+    union = areaA + areaB - intersection
+    return intersection / union

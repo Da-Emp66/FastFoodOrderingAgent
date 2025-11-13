@@ -7,8 +7,8 @@ import cv2
 from fastmcp import FastMCP
 from stagehand import Stagehand, StagehandConfig, StagehandPage
 
-from core.web.agent import ParsedItemDetails
 from core.utils import place_coordinate_on_image
+from core.web.parser import get_item_by_label_number
 import shared
 
 # Default browser geolocation is Orlando
@@ -98,16 +98,6 @@ async def click_element_by_its_text_content(text: str):
 #         return "success"
 #     except Exception as e:
 #         return str(e)
-
-def get_item_by_label_number(number: int):
-    if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
-    current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
-    if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
-    if len(current_image_parse_metadata) <= number:
-        return f"[❌] Error: There is no box labeled by number {number}."
-    item = current_image_parse_metadata[number]
-    item = ParsedItemDetails.model_validate_json(item)
-    return item
 
 @mcp.tool
 async def click_element_by_box_label_number(number: int):

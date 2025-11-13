@@ -38,7 +38,8 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
         subtask,
         previous_browser_screenshot = None,
         current_browser_screenshot = None,
-        current_browser_snapshot = None
+        current_browser_snapshot = None,
+        banned_tools = None,
     ) -> GeneratedTool:
         tool_options = list(self.tools.keys())
         if current_browser_screenshot is not None:
@@ -51,12 +52,14 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                     self.configuration.tool_selection_user_prompt_format \
                         .replace("{overall_goal}", overall_goal) \
                         .replace("{subtask}", subtask) \
-                        .replace("{tool_options}", yaml.safe_dump(tool_options))
+                        .replace("{tool_options}", yaml.safe_dump(tool_options)) \
+                        .replace("{banned_tools}", str(banned_tools))
             else:
                 self.lm += self.configuration.tool_selection_user_prompt_format \
                         .replace("{overall_goal}", overall_goal) \
                         .replace("{subtask}", subtask) \
-                        .replace("{tool_options}", yaml.safe_dump(tool_options))
+                        .replace("{tool_options}", yaml.safe_dump(tool_options)) \
+                        .replace("{banned_tools}", str(banned_tools))
         name = None
         with guidance_assistant():
             self.lm += generate_constrained_json(
@@ -81,7 +84,8 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
             self.lm += self.configuration.tool_args_user_prompt_format \
                 .replace("{overall_goal}", overall_goal) \
                 .replace("{subtask}", subtask) \
-                .replace("{name}", name)
+                .replace("{name}", name) \
+                .replace("{banned_tools}", str(banned_tools))
         with guidance_assistant():
             if name in self.tools:
                 selected_tool = self.tools[name]

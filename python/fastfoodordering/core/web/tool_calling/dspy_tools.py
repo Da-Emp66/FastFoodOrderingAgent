@@ -79,7 +79,8 @@ class DSPyBrowserToolCaller(DSPyToolCaller, BrowserToolCaller):
         subtask: str,
         previous_browser_screenshot: Optional[cv2.typing.MatLike] = None,
         current_browser_screenshot: Optional[cv2.typing.MatLike] = None,
-        current_browser_snapshot: Optional[str] = None
+        current_browser_snapshot: Optional[str] = None,
+        banned_tools: Optional[str] = None,
     ) -> GeneratedTool:
         return await super().determine_tool(
             overall_goal=overall_goal,
@@ -88,6 +89,7 @@ class DSPyBrowserToolCaller(DSPyToolCaller, BrowserToolCaller):
             current_browser_snapshot=current_browser_snapshot, # if visibility
             previous_browser_screenshot=dspy_image_or_blank(previous_browser_screenshot), # if visibility
             current_browser_screenshot=dspy_image_or_blank(current_browser_screenshot), # if visibility
+            banned_tools=banned_tools,
         )
     
     async def determine_and_call_tools(

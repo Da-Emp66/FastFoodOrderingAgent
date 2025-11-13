@@ -9,8 +9,7 @@ from typing import Any, AsyncGenerator, Dict, List, Literal, Optional, Union
 import typing_extensions
 import cv2
 import dspy
-import numpy as np
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 import requests
 
 from core.utils import (
@@ -18,6 +17,7 @@ from core.utils import (
     BaseModelJSONEncoder,
     GeneratedToolSpec,
     ImageResizeConfiguration,
+    IoU,
     Relative2DScale,
     ToolReport,
     from_config,
@@ -31,53 +31,12 @@ from core.web.tool_calling.code_tools import CodeBrowserToolCaller
 from core.web.tool_calling.constrained_json_tools import ConstrainedBrowserToolCaller
 from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller
 from core.web.tool_calling.stagehand_tools import StageHandBrowserToolCaller
-from core.web.toolserver import get_item_by_label_number
+from core.web.parser import FilterConfig, ParseRequest, ParseRequestConfiguration, ParserConfiguration, ParserDetails, ParserMode, get_item_by_label_number
 
 class Plan(BaseModel):
     plan: str
 
 IterativeTaskResult = Union[Plan, ToolReport, Literal['<|COMPLETED_OVERALL_TASK|>']]
-
-class ParsedItemDetails(BaseModel):
-    type: str
-    bbox: List[float]
-    """xyxy relative coordinates of each box."""
-    interactivity: bool
-    content: Optional[str] = None
-    source: str
-
-    model_config = ConfigDict(extra="allow")
-
-class ParserDetails(BaseModel):
-    som_image_base64: str
-    parsed_content_list: List[ParsedItemDetails]
-    """Order matters. Index `0` corresponds to box `0` in the labeled `som_image_base64`, and so forth."""
-    latency: float
-
-    def matlike_image(self):
-        image_data = base64.b64decode(self.som_image_base64)
-        np_array = np.frombuffer(image_data, np.uint8)
-        return cv2.imdecode(np_array, cv2.IMREAD_COLOR)
-
-class ParserMode(str, enum.Enum):
-    Enabled = "enabled"
-    Disabled = "disabled"
-
-class ParserConfiguration(BaseModel):
-    parser_mode: ParserMode = os.getenv("PARSER_MODE", ParserMode.Enabled)
-    parser_uri: str = "http://" + os.getenv("PARSER_HOST", "localhost") + ":" + os.getenv("PARSER_PORT", "8055")
-
-class FilterConfig(BaseModel):
-    banned_regions: List[List[float]]
-    """xyxy bboxes to blacklist in image parsing."""
-    iou_threshold: float
-
-class ParseRequestConfiguration(BaseModel):
-    filter: FilterConfig
-
-class ParseRequest(BaseModel):
-    base64_image: str
-    configuration: Optional[ParseRequestConfiguration] = None
 
 class StrategyRepeatedScreenshots(typing_extensions.TypedDict):
     delay_seconds: float
@@ -168,7 +127,7 @@ class BrowserAgentConfiguration(BaseModel):
     parser: ParserConfiguration = ParserConfiguration()
     image_resize_configuration: ImageResizeConfiguration = Relative2DScale()
     screenshot_call_configuration: ScreenshotConfiguration = ScreenshotConfiguration()
-    blacklisting: Optional[BlacklistingConfiguration] = None
+    blacklisting: Optional[BlacklistingConfiguration] = BlacklistingConfiguration()
 
 class BrowserAgentSystem:
     def __init__(self, configuration: Union[BrowserAgentConfiguration, Any]):
@@ -183,12 +142,11 @@ class BrowserAgentSystem:
             case ToolModes.StageHand: self.tool_caller = StageHandBrowserToolCaller(self.configuration.tools)
             case _: self.tool_caller = None
         self.history = dspy.History(messages=[])
-        if self.configuration.blacklisting is not None and self.configuration.blacklisting.enabled:
-            # This acts as an enforcement policy not to click on
-            # bboxes that we have already clicked on in images
-            # we have already seen. Key is the screenshot hash
-            # for the outer mapping and the 
-            self.blacklist: Dict[str, List[ToolFailureHashSpec]] = {}
+        # This acts as an enforcement policy not to click on
+        # bboxes that we have already clicked on in images
+        # we have already seen. Key is the screenshot hash (hex bytes)
+        # for the mapping.
+        self.blacklist: Dict[str, List[ToolFailureHashSpec]] = {}
     
     def get_banned_bboxes(self, image_or_image_hash: Union[str, cv2.typing.MatLike]):
         blacklisted_tool_items: List[ToolFailureHashSpec] = []
@@ -417,7 +375,7 @@ class BrowserAgentSystem:
             current_browser_screenshot = None if raw_browser_screenshot_before_action is None else raw_browser_screenshot_before_action.copy()
 
             banned_tools = None
-            if self.configuration.blacklisting.enabled:
+            if self.configuration.blacklisting is not None and self.configuration.blacklisting.enabled:
                 raw_browser_screenshot_before_action_hash = self.hash_image(raw_browser_screenshot_before_action)
                 banned_tools = self.get_banned_tools(raw_browser_screenshot_before_action_hash)
 
@@ -464,7 +422,7 @@ class BrowserAgentSystem:
             previous_browser_screenshot_preprocessed = current_browser_screenshot_preprocessed
             current_browser_screenshot_preprocessed = self.preprocess_image_for_llm(current_browser_screenshot, image_metadata_save_path=shared.CURRENT_IMAGE_PARSE_METADATA_PATH)
 
-            if self.configuration.blacklisting.enabled:
+            if self.configuration.blacklisting is not None and self.configuration.blacklisting.enabled:
                 current_browser_screenshot_hash = self.hash_image(current_browser_screenshot)
                 if raw_browser_screenshot_before_action_hash is not None and \
                     current_browser_screenshot_hash is not None and \
@@ -516,14 +474,12 @@ class BrowserAgentSystem:
                 print("Parsing details...", flush=True)
                 parsed_details = self.parse_details(
                     current_browser_screenshot,
-                    configuration=ParseRequestConfiguration(
-                        filter=(
-                            None 
-                            if not self.configuration.blacklisting.enabled
-                            else FilterConfig(
-                                banned_regions=self.get_banned_bboxes(current_browser_screenshot),
-                                iou_threshold=self.configuration.blacklisting.filter_parser_bboxes.iou_threshold,
-                            )
+                    configuration=None if self.configuration.blacklisting is None or \
+                        not self.configuration.blacklisting.enabled
+                        else ParseRequestConfiguration(
+                        filter=FilterConfig(
+                            banned_regions=self.get_banned_bboxes(current_browser_screenshot),
+                            iou_threshold=self.configuration.blacklisting.filter_parser_bboxes.iou_threshold,
                         )
                     )
                 )
@@ -559,10 +515,10 @@ class BrowserAgentSystem:
         if image is None:
             return None
         try:
-            img_bytes = image.tobytes()
-            h = hashlib.new(self.configuration.blacklisting.filter_parser_bboxes.image_hashing_function)
-            h.update(img_bytes)
-            image_hash = h.hexdigest()
+            image_hash = image.tobytes().hex()
+            # h = hashlib.new(self.configuration.blacklisting.filter_parser_bboxes.image_hashing_function)
+            # h.update(img_bytes)
+            # image_hash = h.hexdigest()
         except Exception as e:
             print(f"Error hashing: {e}")
             return None
