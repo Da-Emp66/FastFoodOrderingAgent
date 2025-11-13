@@ -92,15 +92,6 @@ class ScreenshotConfiguration(BaseModel):
     strategy: ScreenshotStrategy = os.getenv("SCREENSHOT_STRATEGY", ScreenshotStrategy.OnBrowserAgent)
     spec: Union[Dict[str, Any], StrategyRepeatedScreenshots] = {}
 
-class BoundingBoxBlacklistEntry(BaseModel):
-    xyxy: List[List[float]]
-    blacklists_bbox: bool = False
-    
-class ToolFailureHashSpec(BaseModel):
-    tool_spec: GeneratedToolSpec
-    blacklists_tool: bool = False
-    associated_bbox: Optional[BoundingBoxBlacklistEntry] = None
-
 class ExtractionConfiguration(BaseModel):
     iou_threshold: float = os.getenv("BLACKLIST_IOU_THRESHOLD", 0.7)
     image_hashing_function: str = "sha256"
@@ -138,6 +129,16 @@ def is_generated_spec_instance_of_blacklist_identifier(generated_spec: Generated
         return True
 
 BlacklistConditional = Union[BlacklistWhenToolsExhaustedOnRegion, BlacklistWhenToolRepeatedNTimes]
+
+class BoundingBoxBlacklistEntry(BaseModel):
+    xyxy: List[List[float]]
+    blacklists_bbox: bool = False
+    
+class ToolFailureHashSpec(BaseModel):
+    tool_spec: GeneratedToolSpec
+    blacklists_tool: bool = False
+    associated_bbox: Optional[BoundingBoxBlacklistEntry] = None
+    source_rule: BlacklistConditional
 
 class BlacklistingConfiguration(BaseModel):
     enabled: bool = os.getenv("ENABLE_BLACKLISTING", True)
@@ -230,13 +231,15 @@ class BrowserAgentSystem:
             region = item.bbox
 
         for blacklist_rule in self.configuration.blacklisting.when_filter:
+            blacklist_rule_type = type(blacklist_rule)
             blacklist_indices_to_prune = set()
-            if blacklist_rule.__repr_name__ == BlacklistWhenToolsExhaustedOnRegion.__name__:
+            if blacklist_rule_type == BlacklistWhenToolsExhaustedOnRegion:
                 possible_calls_remaining_on_region = blacklist_rule.all_these_tools_attempted_on_region
                 possible_call_indices_to_remove = set()
 
                 for idx, item in enumerate(potentially_blacklisted_items):
-                    if item.associated_bbox is None: continue
+                    if item.source_rule != blacklist_rule: continue
+                    if item.associated_bbox is None or item.associated_bbox.xyxy is None: continue
                     if IoU(item.associated_bbox.xyxy, region) > self.configuration.blacklisting.filter_parser_bboxes.iou_threshold:
                         for possible_call_index, possible_call in enumerate(possible_calls_remaining_on_region):
                             if is_generated_spec_instance_of_blacklist_identifier(
@@ -265,6 +268,7 @@ class BrowserAgentSystem:
                             xyxy=region,
                             blacklists_bbox=True,
                         ),
+                        source_rule=blacklist_rule,
                     ))
                 else:
                     potentially_blacklisted_items.append(ToolFailureHashSpec(
@@ -274,12 +278,14 @@ class BrowserAgentSystem:
                             xyxy=region,
                             blacklists_bbox=False,
                         ),
+                        source_rule=blacklist_rule,
                     ))
-            elif blacklist_rule.__repr_name__ == BlacklistWhenToolRepeatedNTimes.__name__:
+            elif blacklist_rule_type == BlacklistWhenToolRepeatedNTimes:
                 evaluated_true = False
                 if is_generated_spec_instance_of_blacklist_identifier(new_tool_call, blacklist_rule.tool_call):
                     counter = 1
                     for idx, item in enumerate(potentially_blacklisted_items):
+                        if item.source_rule != blacklist_rule: continue
                         if is_generated_spec_instance_of_blacklist_identifier(item.tool_spec, blacklist_rule.tool_call):
                             blacklist_indices_to_prune.add(idx)
                             counter += 1
@@ -299,6 +305,7 @@ class BrowserAgentSystem:
                             xyxy=region,
                             blacklists_bbox=True,
                         ),
+                        source_rule=blacklist_rule,
                     ))
                 else:
                     potentially_blacklisted_items.append(ToolFailureHashSpec(
@@ -308,6 +315,7 @@ class BrowserAgentSystem:
                             xyxy=region,
                             blacklists_bbox=False,
                         ),
+                        source_rule=blacklist_rule,
                     ))
             else:
                 raise NotImplementedError(f"Unsupported blacklist rule: {type(blacklist_rule)}")
