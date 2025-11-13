@@ -99,19 +99,24 @@ async def click_element_by_its_text_content(text: str):
 #     except Exception as e:
 #         return str(e)
 
+def get_item_by_label_number(number: int):
+    if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
+    current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
+    if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
+    if len(current_image_parse_metadata) <= number:
+        return f"[❌] Error: There is no box labeled by number {number}."
+    item = current_image_parse_metadata[number]
+    item = ParsedItemDetails.model_validate_json(item)
+    return item
+
 @mcp.tool
 async def click_element_by_box_label_number(number: int):
     global page, MOST_RECENT_CLICK
     # print("In function call `click_by_box_label_number`...")
 
     try:
-        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
-        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
-        if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
-        if len(current_image_parse_metadata) <= number:
-            return f"[❌] Error: There is no box labeled by number {number}."
-        item = current_image_parse_metadata[number]
-        item = ParsedItemDetails.model_validate_json(item)
+        item = get_item_by_label_number(number)
+        if type(item) == str: return item
         center_x = (item.bbox[0] + item.bbox[2]) / 2
         center_y = (item.bbox[1] + item.bbox[3]) / 2
         await page.wait_for_load_state("domcontentloaded")
@@ -136,13 +141,8 @@ async def type_text_by_box_label_number(number: int, text: str):
     # print("In function call `type_text_by_box_label_number`...")
     
     try:
-        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
-        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
-        if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
-        if len(current_image_parse_metadata) <= number:
-            return f"[❌] Error: There is no box labeled by number {number}."
-        item = current_image_parse_metadata[number]
-        item = ParsedItemDetails.model_validate_json(item)
+        item = get_item_by_label_number(number)
+        if type(item) == str: return item
         center_x = (item.bbox[0] + item.bbox[2]) / 2
         center_y = (item.bbox[1] + item.bbox[3]) / 2
         # Use JS to find the element at those coordinates
@@ -211,10 +211,6 @@ async def fill_all_text_boxes_with(text: str):
 #         "longitude": longitude,
 #         "accuracy": accuracy,
 #     })
-
-# @mcp.tool
-# async def find(description_of_thing_to_click_on: str):
-#     pass
 
 async def init_globals():
     print("INSIDE INIT GLOBALS")

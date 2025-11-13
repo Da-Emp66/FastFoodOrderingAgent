@@ -31,6 +31,7 @@ from core.web.tool_calling.code_tools import CodeBrowserToolCaller
 from core.web.tool_calling.constrained_json_tools import ConstrainedBrowserToolCaller
 from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller
 from core.web.tool_calling.stagehand_tools import StageHandBrowserToolCaller
+from core.web.toolserver import get_item_by_label_number
 
 class Plan(BaseModel):
     plan: str
@@ -62,15 +63,9 @@ class ParserMode(str, enum.Enum):
     Enabled = "enabled"
     Disabled = "disabled"
 
-class ExtractionConfiguration(BaseModel):
-    enable_region_blacklisting: bool = os.getenv("ENABLE_REGION_BLACKLISTING", True)
-    iou_threshold: float = os.getenv("BLACKLIST_IOU_THRESHOLD", 0.7)
-    image_hashing_function: str = "sha256"
-
 class ParserConfiguration(BaseModel):
     parser_mode: ParserMode = os.getenv("PARSER_MODE", ParserMode.Enabled)
     parser_uri: str = "http://" + os.getenv("PARSER_HOST", "localhost") + ":" + os.getenv("PARSER_PORT", "8055")
-    extraction_configuration: ExtractionConfiguration = ExtractionConfiguration()
 
 class FilterConfig(BaseModel):
     banned_regions: List[List[float]]
@@ -97,6 +92,72 @@ class ScreenshotConfiguration(BaseModel):
     strategy: ScreenshotStrategy = os.getenv("SCREENSHOT_STRATEGY", ScreenshotStrategy.OnBrowserAgent)
     spec: Union[Dict[str, Any], StrategyRepeatedScreenshots] = {}
 
+class BoundingBoxBlacklistEntry(BaseModel):
+    xyxy: List[List[float]]
+    blacklists_bbox: bool = False
+    
+class ToolFailureHashSpec(BaseModel):
+    tool_spec: GeneratedToolSpec
+    blacklists_tool: bool = False
+    associated_bbox: Optional[BoundingBoxBlacklistEntry] = None
+
+class ExtractionConfiguration(BaseModel):
+    iou_threshold: float = os.getenv("BLACKLIST_IOU_THRESHOLD", 0.7)
+    image_hashing_function: str = "sha256"
+
+class AnyToolCallWithOrWithoutExceptions(BaseModel):
+    could_be: Literal["any"]
+    exceptions: List[Union[str, GeneratedToolSpec]] = []
+
+# Used to ease configuration
+ToolBlacklistIdentifier = Union[str, GeneratedToolSpec, AnyToolCallWithOrWithoutExceptions]
+
+class BlacklistWhenToolsExhaustedOnRegion(BaseModel):
+    all_these_tools_attempted_on_region: List[ToolBlacklistIdentifier]
+    """Blacklist a bbox only when all of the these exact tools or all tools of these names have been attempted on that region."""
+
+class BlacklistWhenToolRepeatedNTimes(BaseModel):
+    tool_call: Union[ToolBlacklistIdentifier]
+    repeated_n_times: int = 3
+
+def is_generated_spec_instance_of_blacklist_identifier(generated_spec: GeneratedToolSpec, identifier: Union[ToolBlacklistIdentifier, List[ToolBlacklistIdentifier]]):
+    type_of_identifier = type(identifier)
+    if type_of_identifier == str:
+        return (generated_spec.tool == identifier)
+    elif type_of_identifier == list:
+        for sub_identifier in identifier:
+            if is_generated_spec_instance_of_blacklist_identifier(generated_spec, sub_identifier):
+                return True
+        return False
+    elif type_of_identifier == GeneratedToolSpec:
+        return (generated_spec == identifier)
+    elif type_of_identifier == AnyToolCallWithOrWithoutExceptions:
+        for exception in identifier.exceptions:
+            if is_generated_spec_instance_of_blacklist_identifier(generated_spec, exception):
+                return False
+        return True
+
+BlacklistConditional = Union[BlacklistWhenToolsExhaustedOnRegion, BlacklistWhenToolRepeatedNTimes]
+
+class BlacklistingConfiguration(BaseModel):
+    enabled: bool = os.getenv("ENABLE_BLACKLISTING", True)
+    filter_parser_bboxes: ExtractionConfiguration = ExtractionConfiguration()
+    when_filter: List[BlacklistConditional] = [
+        BlacklistWhenToolRepeatedNTimes(
+            tool_call=AnyToolCallWithOrWithoutExceptions(
+                could_be="any",
+                exceptions=["click_element_by_box_label_number", "type_text_by_box_label_number"]
+            ),
+            repeated_n_times=3,
+        ),
+        BlacklistWhenToolsExhaustedOnRegion(
+            all_these_tools_attempted_on_region=[
+                "click_element_by_box_label_number",
+                "type_text_by_box_label_number",
+            ],
+        ),
+    ]
+
 class BrowserAgentConfiguration(BaseModel):
     tool_mode: ToolModes = ToolModes.Constrained
     tools: Optional[Dict[str, Any]] = None
@@ -106,6 +167,7 @@ class BrowserAgentConfiguration(BaseModel):
     parser: ParserConfiguration = ParserConfiguration()
     image_resize_configuration: ImageResizeConfiguration = Relative2DScale()
     screenshot_call_configuration: ScreenshotConfiguration = ScreenshotConfiguration()
+    blacklisting: Optional[BlacklistingConfiguration] = None
 
 class BrowserAgentSystem:
     def __init__(self, configuration: Union[BrowserAgentConfiguration, Any]):
@@ -120,13 +182,136 @@ class BrowserAgentSystem:
             case ToolModes.StageHand: self.tool_caller = StageHandBrowserToolCaller(self.configuration.tools)
             case _: self.tool_caller = None
         self.history = dspy.History(messages=[])
-        if self.configuration.parser.extraction_configuration.enable_region_blacklisting:
+        if self.configuration.blacklisting is not None and self.configuration.blacklisting.enabled:
             # This acts as an enforcement policy not to click on
             # bboxes that we have already clicked on in images
             # we have already seen. Key is the screenshot hash
-            # for each of these blacklist mappings.
-            self.blacklisted_xyxy_regions: Dict[str, List[List[float]]] = {}
-            self.blacklisted_tool_calls: Dict[str, GeneratedToolSpec] = {}
+            # for the outer mapping and the 
+            self.blacklist: Dict[str, List[ToolFailureHashSpec]] = {}
+    
+    def get_banned_bboxes(self, image_or_image_hash: Union[str, cv2.typing.MatLike]):
+        blacklisted_tool_items: List[ToolFailureHashSpec] = []
+        if isinstance(image_or_image_hash, cv2.typing.MatLike):
+            image_or_image_hash = self.hash_image(image_or_image_hash)
+        blacklisted_tool_items = self.blacklist.get(image_or_image_hash, [])
+        return list(map(
+            lambda failed_tool_call: failed_tool_call.associated_bbox.xyxy,
+            filter(
+                lambda failed_tool_call: failed_tool_call.associated_bbox is not None \
+                    and failed_tool_call.associated_bbox.blacklists_bbox,
+                blacklisted_tool_items
+            )
+        ))
+    
+    def get_banned_tools(self, image_or_image_hash: Union[str, cv2.typing.MatLike]):
+        blacklisted_tool_items: List[ToolFailureHashSpec] = []
+        if isinstance(image_or_image_hash, cv2.typing.MatLike):
+            image_or_image_hash = self.hash_image(image_or_image_hash)
+        blacklisted_tool_items = self.blacklist.get(image_or_image_hash, [])
+        return list(filter(
+            lambda failed_tool_call: failed_tool_call.blacklists_tool,
+            blacklisted_tool_items
+        ))
+    
+    def evaluate_blacklist_criteria_and_update_blacklist(self, image_hash: str, new_tool_call: GeneratedToolSpec):
+        potentially_blacklisted_items: List[ToolFailureHashSpec] = self.blacklist.get(image_hash, [])
+        if len(potentially_blacklisted_items) == 0 or \
+            self.configuration.blacklisting is None or \
+            self.configuration.blacklisting.enabled == False:
+                return
+        
+        region = None
+        if new_tool_call.tool in ["click_element_by_box_label_number", "type_text_by_box_label_number"]:
+            try:
+                item = get_item_by_label_number(new_tool_call.args.get("number", -1))
+            except Exception:
+                return
+            if type(item) == str: return
+            region = item.bbox
+
+        for blacklist_rule in self.configuration.blacklisting.when_filter:
+            blacklist_indices_to_prune = set()
+            if blacklist_rule.__repr_name__ == BlacklistWhenToolsExhaustedOnRegion.__name__:
+                possible_calls_remaining_on_region = blacklist_rule.all_these_tools_attempted_on_region
+                possible_call_indices_to_remove = set()
+
+                for idx, item in enumerate(potentially_blacklisted_items):
+                    if item.associated_bbox is None: continue
+                    if IoU(item.associated_bbox.xyxy, region) > self.configuration.blacklisting.filter_parser_bboxes.iou_threshold:
+                        for possible_call_index, possible_call in enumerate(possible_calls_remaining_on_region):
+                            if is_generated_spec_instance_of_blacklist_identifier(
+                                generated_spec=item.tool_spec,
+                                identifier=possible_call,
+                            ):
+                                blacklist_indices_to_prune.add(idx)
+                                possible_call_indices_to_remove.add(possible_call_index)
+
+                sorted_indices_calls_to_remove = sorted(list(possible_call_indices_to_remove))
+                counter = 0
+                for idx in sorted_indices_calls_to_remove:
+                    possible_calls_remaining_on_region.pop(idx - counter)
+                    counter += 1
+                
+                if len(possible_calls_remaining_on_region) == 1 and is_generated_spec_instance_of_blacklist_identifier(new_tool_call, possible_calls_remaining_on_region[0]):
+                    sorted_indices_blacklisted_items_to_remove = sorted(list(blacklist_indices_to_prune))
+                    counter = 0
+                    for idx in sorted_indices_blacklisted_items_to_remove:
+                        potentially_blacklisted_items.pop(idx - counter)
+                        counter += 1
+                    potentially_blacklisted_items.append(ToolFailureHashSpec(
+                        tool_spec=new_tool_call,
+                        blacklists_tool=True,
+                        associated_bbox=BoundingBoxBlacklistEntry(
+                            xyxy=region,
+                            blacklists_bbox=True,
+                        ),
+                    ))
+                else:
+                    potentially_blacklisted_items.append(ToolFailureHashSpec(
+                        tool_spec=new_tool_call,
+                        blacklists_tool=False,
+                        associated_bbox=BoundingBoxBlacklistEntry(
+                            xyxy=region,
+                            blacklists_bbox=False,
+                        ),
+                    ))
+            elif blacklist_rule.__repr_name__ == BlacklistWhenToolRepeatedNTimes.__name__:
+                evaluated_true = False
+                if is_generated_spec_instance_of_blacklist_identifier(new_tool_call, blacklist_rule.tool_call):
+                    counter = 1
+                    for idx, item in enumerate(potentially_blacklisted_items):
+                        if is_generated_spec_instance_of_blacklist_identifier(item.tool_spec, blacklist_rule.tool_call):
+                            blacklist_indices_to_prune.add(idx)
+                            counter += 1
+                            if counter >= blacklist_rule.repeated_n_times:
+                                evaluated_true = True
+                                break
+                if evaluated_true:
+                    sorted_indices_blacklisted_items_to_remove = sorted(list(blacklist_indices_to_prune))
+                    counter = 0
+                    for idx in sorted_indices_blacklisted_items_to_remove:
+                        potentially_blacklisted_items.pop(idx - counter)
+                        counter += 1
+                    potentially_blacklisted_items.append(ToolFailureHashSpec(
+                        tool_spec=new_tool_call,
+                        blacklists_tool=True,
+                        associated_bbox=None if region is None else BoundingBoxBlacklistEntry(
+                            xyxy=region,
+                            blacklists_bbox=True,
+                        ),
+                    ))
+                else:
+                    potentially_blacklisted_items.append(ToolFailureHashSpec(
+                        tool_spec=new_tool_call,
+                        blacklists_tool=False,
+                        associated_bbox=None if region is None else BoundingBoxBlacklistEntry(
+                            xyxy=region,
+                            blacklists_bbox=False,
+                        ),
+                    ))
+            else:
+                raise NotImplementedError(f"Unsupported blacklist rule: {type(blacklist_rule)}")
+            self.blacklist[image_hash] = potentially_blacklisted_items
     
     async def __call__(self):
         return await self.process_request()
@@ -152,7 +337,10 @@ class BrowserAgentSystem:
 
     async def screenshot_until_stopped(self):
         while not self.screenshot_thread_stopped:
-            await self.tool_caller.screenshot()
+            screenshot = await self.tool_caller.screenshot()
+            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug \
+                and screenshot is not None:
+                await self.show_browser(screenshot)
             time.sleep(self.configuration.screenshot_call_configuration.spec.get("delay_seconds", 0.1))
 
     async def show_browser(self, image: cv2.typing.MatLike):
@@ -220,12 +408,20 @@ class BrowserAgentSystem:
             raw_browser_screenshot_before_action = await self.get_current_browser_screenshot(screenshot_save_path=shared.CURRENT_SCREENSHOT_PATH)
             current_browser_screenshot = None if raw_browser_screenshot_before_action is None else raw_browser_screenshot_before_action.copy()
 
+            banned_tools = None
+            if self.configuration.blacklisting.enabled:
+                raw_browser_screenshot_before_action_hash = self.hash_image(raw_browser_screenshot_before_action)
+                banned_tools = self.get_banned_tools(raw_browser_screenshot_before_action_hash)
+
             print("Pre-action browser screenshot obtained.", flush=True)
             previous_browser_screenshot_preprocessed = current_browser_screenshot_preprocessed
             current_browser_screenshot_preprocessed = self.preprocess_image_for_llm(current_browser_screenshot, image_metadata_save_path=shared.CURRENT_IMAGE_PARSE_METADATA_PATH)
             
             # Show the browser if in debug mode
-            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug and current_browser_screenshot_preprocessed is not None: await self.show_browser(current_browser_screenshot_preprocessed)
+            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug \
+                and current_browser_screenshot_preprocessed is not None \
+                and self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent:
+                await self.show_browser(current_browser_screenshot_preprocessed)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             if current_browser_snapshot is not None: print(current_browser_snapshot, flush=True)
 
@@ -237,6 +433,7 @@ class BrowserAgentSystem:
                 previous_browser_screenshot=previous_browser_screenshot_preprocessed,
                 current_browser_screenshot=current_browser_screenshot_preprocessed,
                 current_browser_snapshot=current_browser_snapshot,
+                banned_tools=None if banned_tools is None else json.dumps(banned_tools, indent=2, cls=BaseModelJSONEncoder),
             )
             print(f"Tool to call determined to be: {generated_tool}", flush=True)
 
@@ -259,15 +456,23 @@ class BrowserAgentSystem:
             previous_browser_screenshot_preprocessed = current_browser_screenshot_preprocessed
             current_browser_screenshot_preprocessed = self.preprocess_image_for_llm(current_browser_screenshot, image_metadata_save_path=shared.CURRENT_IMAGE_PARSE_METADATA_PATH)
 
-            raw_browser_screenshot_before_action_hash = self.hash_image(raw_browser_screenshot_before_action)
-            current_browser_screenshot_hash = self.hash_image(current_browser_screenshot)
-            if raw_browser_screenshot_before_action_hash == current_browser_screenshot_hash:
-                print("Tool call failure detected. Screenshot after action is the same as screenshot before action. Logging this failure.")
-
-                print(f"Tool call {previous_tool_call} banned on this screen.")
+            if self.configuration.blacklisting.enabled:
+                current_browser_screenshot_hash = self.hash_image(current_browser_screenshot)
+                if raw_browser_screenshot_before_action_hash is not None and \
+                    current_browser_screenshot_hash is not None and \
+                    raw_browser_screenshot_before_action_hash == current_browser_screenshot_hash:
+                    print("Tool call failure detected. Screenshot after action is the same as screenshot before action. Logging this failure.")
+                    self.evaluate_blacklist_criteria_and_update_blacklist(
+                        current_browser_screenshot_hash,
+                        new_tool_call=generated_tool.spec,
+                    )
+                    print(f"Tool call {previous_tool_call} banned on this screen.")
 
             # Show the browser if in debug mode
-            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug and current_browser_screenshot_preprocessed is not None: await self.show_browser(current_browser_screenshot_preprocessed)
+            if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug \
+                and current_browser_screenshot_preprocessed is not None \
+                and self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent:
+                await self.show_browser(current_browser_screenshot_preprocessed)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             print("Post-action browser screenshot obtained.", flush=True)
 
@@ -306,10 +511,10 @@ class BrowserAgentSystem:
                     configuration=ParseRequestConfiguration(
                         filter=(
                             None 
-                            if not self.configuration.parser.extraction_configuration.enable_region_blacklisting 
+                            if not self.configuration.blacklisting.enabled
                             else FilterConfig(
-                                banned_regions=self.blacklisted_xyxy_regions.get(self.hash_image(current_browser_screenshot), []),
-                                iou_threshold=self.configuration.parser.extraction_configuration.iou_threshold,
+                                banned_regions=self.get_banned_bboxes(current_browser_screenshot),
+                                iou_threshold=self.configuration.blacklisting.filter_parser_bboxes.iou_threshold,
                             )
                         )
                     )
@@ -342,18 +547,12 @@ class BrowserAgentSystem:
             return None
         return ParserDetails.model_validate(response)
 
-    # def get_banned_regions(self, image: cv2.typing.MatLike) -> List[List[float]]:
-    #     if image_hash is not None:
-    #         return self.blacklist.get(image_hash, [])
-    #     else:
-    #         return []
-
     def hash_image(self, image: cv2.typing.MatLike) -> Optional[str]:
         if image is None:
             return None
         try:
             img_bytes = image.tobytes()
-            h = hashlib.new(self.configuration.parser.extraction_configuration.image_hashing_function)
+            h = hashlib.new(self.configuration.blacklisting.filter_parser_bboxes.image_hashing_function)
             h.update(img_bytes)
             image_hash = h.hexdigest()
         except Exception as e:

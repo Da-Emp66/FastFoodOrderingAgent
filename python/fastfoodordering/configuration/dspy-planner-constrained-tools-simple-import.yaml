@@ -32,12 +32,15 @@ tools:
     Current Task: {subtask}
     Possible Tool Options:
     {tool_options}
+
+    Banned Tools: {banned_tools}
     
     Notes: If asked to go to a url, use 'navigate', not a 'click' tool.
     
   tool_args_user_prompt_format: |
     Overall Goal: {overall_goal}
     Current Task: {subtask}
+    Banned Tools: {banned_tools}
     Selected tool is {name}. Now determine the arguments:
 
 planner:
