@@ -296,6 +296,7 @@ class BrowserAgentSystem:
             raise Exception("Could not obtain the browser screenshot.")
 
     def preprocess_image_for_llm(self, current_browser_screenshot: cv2.typing.MatLike, image_metadata_save_path: str):
+        print("Performing preprocessing steps...")
         if current_browser_screenshot is not None:
             print(f"Screenshot shape: {current_browser_screenshot.shape}", flush=True)
             if self.configuration.parser.parser_mode == ParserMode.Enabled:

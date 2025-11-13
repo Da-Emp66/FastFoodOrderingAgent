@@ -1,6 +1,8 @@
 tool_mode: constrained
 tools:
   custom_tools:
+    - function_name: screenshot
+      import_spec: core/web/toolserver.py
     - function_name: navigate
       import_spec: core/web/toolserver.py
     - function_name: scroll

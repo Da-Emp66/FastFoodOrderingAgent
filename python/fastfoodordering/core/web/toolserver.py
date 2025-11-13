@@ -135,40 +135,40 @@ async def type_text_by_box_label_number(number: int, text: str):
     global page, MOST_RECENT_CLICK
     # print("In function call `type_text_by_box_label_number`...")
     
-    # try:
-    if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
-    current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
-    if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
-    if len(current_image_parse_metadata) <= number:
-        return f"[❌] Error: There is no box labeled by number {number}."
-    item = current_image_parse_metadata[number]
-    item = ParsedItemDetails.model_validate_json(item)
-    center_x = (item.bbox[0] + item.bbox[2]) / 2
-    center_y = (item.bbox[1] + item.bbox[3]) / 2
-    # Use JS to find the element at those coordinates
-    element_handle = await page.evaluate_handle(
-        """([x, y]) => document.elementFromPoint(x, y)""",
-        [center_x, center_y],
-    )
-    if not element_handle:
-        return f"[❌] Error: No element found at ({center_x}, {center_y})"
-    # Wrap it back into a Playwright ElementHandle
-    element = element_handle.as_element()
-    if element is None:
-        return f"[❌] Error: Element at ({center_x}, {center_y}) is not a valid input element"
-    # Optional: check visibility
-    if not await element.is_visible():
-        return f"[⚠️] Error: Element at ({center_x}, {center_y}) is not visible"
-    # Fill the element
-    await element.click()
-    await element.fill(text)
-    await element.press("Enter")
-    time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
-    bbox = await element.bounding_box()
-    MOST_RECENT_CLICK = bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2
-    return f"[✅] Success: Filled element at ({center_x}, {center_y}) with text: {text}"
-    # except Exception as e:
-    #     return str(e)
+    try:
+        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
+        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
+        if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
+        if len(current_image_parse_metadata) <= number:
+            return f"[❌] Error: There is no box labeled by number {number}."
+        item = current_image_parse_metadata[number]
+        item = ParsedItemDetails.model_validate_json(item)
+        center_x = (item.bbox[0] + item.bbox[2]) / 2
+        center_y = (item.bbox[1] + item.bbox[3]) / 2
+        # Use JS to find the element at those coordinates
+        element_handle = await page.evaluate_handle(
+            """([x, y]) => document.elementFromPoint(x, y)""",
+            [center_x, center_y],
+        )
+        if not element_handle:
+            return f"[❌] Error: No element found at ({center_x}, {center_y})"
+        # Wrap it back into a Playwright ElementHandle
+        element = element_handle.as_element()
+        if element is None:
+            return f"[❌] Error: Element at ({center_x}, {center_y}) is not a valid input element"
+        # Optional: check visibility
+        if not await element.is_visible():
+            return f"[⚠️] Error: Element at ({center_x}, {center_y}) is not visible"
+        # Fill the element
+        await element.click()
+        await element.fill(text)
+        await element.press("Enter")
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
+        bbox = await element.bounding_box()
+        MOST_RECENT_CLICK = bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2
+        return f"[✅] Success: Filled element at ({center_x}, {center_y}) with text: {text}"
+    except Exception as e:
+        return str(e)
 
 @mcp.tool
 async def fill_all_text_boxes_with(text: str):
@@ -225,8 +225,8 @@ async def init_globals():
         model_name=os.getenv("MODEL_NAME"),
         model_api_key=os.getenv("OPENAI_API_KEY"),
         local_browser_launch_options={
-            "headless": True,
-            # "headless": False,
+            # "headless": True,
+            "headless": False,
             "ignoreDefaultArgs": ['--hide-scrollbars'],
         }
     )
