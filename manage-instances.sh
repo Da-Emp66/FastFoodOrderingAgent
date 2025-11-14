@@ -30,10 +30,39 @@ get_instance_info() {
     echo "HTTPS: ${https_port:-N/A}, Session: ${session_port:-N/A}, LLM: ${llm_port:-N/A}"
 }
 
+# Function to ensure required Docker resources exist
+ensure_docker_resources() {
+    local instance_num=$1
+    local env_file=".env.instance${instance_num}"
+    
+    # Get network name from env file
+    local network_name=$(grep "^DOCKER_NETWORK_NAME=" "$env_file" | cut -d'=' -f2)
+    network_name=${network_name:-fast-food-${instance_num}}
+    
+    # Create network if it doesn't exist
+    if ! docker network inspect "$network_name" >/dev/null 2>&1; then
+        echo "  Creating network: $network_name"
+        docker network create "$network_name" >/dev/null
+    fi
+    
+    # Create volumes if they don't exist
+    local volumes=("certbot-conf-${instance_num}" "certbot-www-${instance_num}" "nginx-logs-${instance_num}")
+    for volume in "${volumes[@]}"; do
+        if ! docker volume inspect "$volume" >/dev/null 2>&1; then
+            echo "  Creating volume: $volume"
+            docker volume create "$volume" >/dev/null
+        fi
+    done
+}
+
 # Function to start a single instance
 start_instance() {
     local instance_num=$1
     echo "Starting Instance $instance_num..."
+    
+    # Ensure networks and volumes exist before starting
+    ensure_docker_resources $instance_num
+    
     docker compose -p fastfood-instance-${instance_num} --env-file .env.instance${instance_num} up -d
     echo "Instance $instance_num started! ($(get_instance_info $instance_num))"
 }
