@@ -69,6 +69,10 @@ class BrowserClickCoordinates(BaseModel):
     y: float
     """Relative Y coordinate (0-1 range)"""
 
+class BrowserTextInput(BaseModel):
+    text: str
+    """Text to type into the currently focused element"""
+
 @app.post("/chat")
 def chat(prompt: SimplePrompt) -> SimpleResponse:
     """Obtain a basic response from the LLM."""
@@ -163,6 +167,45 @@ async def handle_browser_click(user: str, session_id: str, coordinates: BrowserC
         raise HTTPException(
             status_code=500,
             detail=f"Error forwarding click: {str(e)}"
+        )
+
+@app.post("/{user}/sessions/{session_id}/type")
+async def handle_browser_type(user: str, session_id: str, text_input: BrowserTextInput):
+    """Forward user text input to the web agent container."""
+    try:
+        # Get the container name for this session
+        container_spec = populate_environment_specifications(
+            shared.session_manager.configuration.web_agent_spec,
+            _DYN_WEB_AGENT_USER=user,
+            _DYN_WEB_AGENT_SESSION_ID=session_id,
+        )
+        container_url = f"http://{container_spec['name']}:9000/active-session/type"
+
+        # Forward the text input to the web agent container
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                container_url,
+                json={"text": text_input.text},
+                timeout=10.0
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Web agent returned error: {response.text}"
+                )
+
+        return {"status": "success"}
+
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not connect to web agent: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error forwarding text input: {str(e)}"
         )
 
 def on_exit():

@@ -34,6 +34,10 @@ class BrowserClickCoordinates(BaseModel):
     y: float
     """Relative Y coordinate (0-1 range)"""
 
+class BrowserTextInput(BaseModel):
+    text: str
+    """Text to type into the currently focused element"""
+
 @app.websocket("/active-session/view")
 async def stream_browser(websocket: WebSocket):
     await websocket.accept()
@@ -93,6 +97,26 @@ async def handle_click(coordinates: BrowserClickCoordinates):
         return Response(status_code=200)
     except Exception as e:
         print(f"Error handling click: {e}")
+        return Response(status_code=500, content=str(e))
+
+@app.post("/active-session/type")
+async def handle_type(text_input: BrowserTextInput):
+    """Type text into the currently focused element."""
+    try:
+        # Get the browser agent's tool caller
+        agent = shared.this_session.web_agent
+
+        # Get the page
+        page = agent.tool_caller.page if hasattr(agent.tool_caller, 'page') else None
+        if page is None:
+            return Response(status_code=400, content="Browser page not available")
+
+        # Type the text into the currently focused element
+        await page.keyboard.type(text_input.text)
+
+        return Response(status_code=200)
+    except Exception as e:
+        print(f"Error handling text input: {e}")
         return Response(status_code=500, content=str(e))
 
 def main(args):

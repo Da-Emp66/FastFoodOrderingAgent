@@ -39,6 +39,10 @@ export interface BrowserClickCoordinates {
   y: number;
 }
 
+export interface BrowserTextInput {
+  text: string;
+}
+
 /**
  * Main chat endpoint for session manager agent
  * POST /{user}/sessions/chat
@@ -178,6 +182,33 @@ export async function sendBrowserClick(
 
   const response = await fetch(
     `${BACKEND_URL}/${user}/sessions/${sessionId}/click`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+/**
+ * Send text input to the browser (types into currently focused element)
+ * POST /{user}/sessions/{session_id}/type
+ */
+export async function sendBrowserType(
+  user: string,
+  sessionId: string,
+  text: string
+): Promise<void> {
+  const payload: BrowserTextInput = { text };
+
+  const response = await fetch(
+    `${BACKEND_URL}/${user}/sessions/${sessionId}/type`,
     {
       method: 'POST',
       headers: {
