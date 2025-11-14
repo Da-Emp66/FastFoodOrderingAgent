@@ -211,8 +211,8 @@ async def init_globals():
         model_name=os.getenv("MODEL_NAME"),
         model_api_key=os.getenv("OPENAI_API_KEY"),
         local_browser_launch_options={
-            # "headless": True,
-            "headless": False,
+            # "headless": True, # For production Docker
+            "headless": False, # For local testing
             "ignoreDefaultArgs": ['--hide-scrollbars'],
         }
     )

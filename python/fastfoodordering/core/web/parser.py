@@ -15,7 +15,7 @@ class ParsedItemDetails(BaseModel):
     """xyxy relative coordinates of each box."""
     interactivity: bool
     content: Optional[str] = None
-    source: str
+    source: Optional[str] = None
 
     model_config = ConfigDict(extra="allow")
 

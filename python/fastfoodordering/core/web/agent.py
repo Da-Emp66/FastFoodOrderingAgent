@@ -349,24 +349,6 @@ class BrowserAgentSystem:
         while not complete and (shared.MAX_TASK_ITERATIONS == -1 or iterations < shared.MAX_TASK_ITERATIONS):
             overall_goal = shared.this_session.current_spec.objective_spec.objective
             print(f"Overall goal is currently: {overall_goal}", flush=True)
-            ### Step 1: Determine sub-task
-            if not self.planner.configuration.disable:
-                print("Determining subtask...", flush=True)
-                subtask = await self.planner.infer_subtask(
-                    overall_goal=overall_goal,
-                    previous_subtask=previous_subtask,
-                    previous_tool_call=previous_tool_call,
-                    previous_tool_call_output=previous_tool_call_output,
-                    previous_browser_screenshot=previous_browser_screenshot_preprocessed,
-                    current_browser_screenshot=current_browser_screenshot_preprocessed,
-                    current_browser_snapshot=current_browser_snapshot,
-                    tool_caller=self.tool_caller,
-                    history=self.history,
-                )
-                yield Plan(plan=subtask)
-                print(f"Successfully determined subtask. Current subtask is `{subtask}`", flush=True)
-            else:
-                subtask = None
 
             print("Taking pre-action browser screenshot...", flush=True)
             # Take a screenshot of the browser before the tool call
@@ -391,6 +373,27 @@ class BrowserAgentSystem:
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             if current_browser_snapshot is not None: print(current_browser_snapshot, flush=True)
 
+            if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent:
+                cv2.imwrite(shared.CURRENT_SCREENSHOT_PATH, current_browser_screenshot_preprocessed)
+
+            ### Step 1: Determine sub-task
+            if not self.planner.configuration.disable:
+                print("Determining subtask...", flush=True)
+                subtask = await self.planner.infer_subtask(
+                    overall_goal=overall_goal,
+                    previous_subtask=previous_subtask,
+                    previous_tool_call=previous_tool_call,
+                    previous_tool_call_output=previous_tool_call_output,
+                    previous_browser_screenshot=previous_browser_screenshot_preprocessed,
+                    current_browser_screenshot=current_browser_screenshot_preprocessed,
+                    current_browser_snapshot=current_browser_snapshot,
+                    tool_caller=self.tool_caller,
+                    history=self.history,
+                )
+                yield Plan(plan=subtask)
+                print(f"Successfully determined subtask. Current subtask is `{subtask}`", flush=True)
+            else:
+                subtask = None
             ### Step 2: Determine, process, and call the tool
             print("Determining tool to call...", flush=True)
             generated_tool = await self.tool_caller.determine_tool(
@@ -459,9 +462,11 @@ class BrowserAgentSystem:
         yield FINISH_TOKEN
 
     async def get_current_browser_screenshot(self, screenshot_save_path: str):
-        if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent or not os.path.exists(screenshot_save_path):
+        if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent \
+            or not os.path.exists(screenshot_save_path):
             return await self.tool_caller.screenshot()
-        elif self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.ExternalRepeated and os.path.exists(screenshot_save_path):
+        elif self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.ExternalRepeated \
+            and os.path.exists(screenshot_save_path):
             return cv2.imread(screenshot_save_path)
         else:
             raise Exception("Could not obtain the browser screenshot.")
@@ -516,9 +521,6 @@ class BrowserAgentSystem:
             return None
         try:
             image_hash = image.tobytes().hex()
-            # h = hashlib.new(self.configuration.blacklisting.filter_parser_bboxes.image_hashing_function)
-            # h.update(img_bytes)
-            # image_hash = h.hexdigest()
         except Exception as e:
             print(f"Error hashing: {e}")
             return None
