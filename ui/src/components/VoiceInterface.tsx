@@ -15,7 +15,11 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button
+  Button,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close, FullscreenExit } from '@mui/icons-material';
 import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick, sendBrowserType } from '../services/api';
@@ -67,6 +71,9 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Ordering mode (GUI = AI agent, API = scripted ordering)
+  const [orderingMode, setOrderingMode] = useState<'GUI' | 'API-Wendys' | 'API-McDonalds'>('GUI');
+
   // Get user's geolocation
   const { location: geolocation, error: geoError, loading: geoLoading } = useGeolocation();
 
@@ -88,7 +95,8 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         username,
         text,
         sessionId,
-        geolocation
+        geolocation,
+        orderingMode
       );
 
       // Update session ID if returned
@@ -563,8 +571,43 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
                   }}
                 >
         {/* Header */}
-        <Box sx={{ textAlign: 'center', py: 2 }}>
-          <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+        <Box sx={{ width: '100%', position: 'relative', py: 2, px: 2 }}>
+          {/* Mode Selector - Top Left */}
+          <Box sx={{ position: 'absolute', top: 8, left: 8 }}>
+            <FormControl size="small">
+              <Select
+                value={orderingMode}
+                onChange={(e) => setOrderingMode(e.target.value as any)}
+                sx={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  borderRadius: 1.5,
+                  fontSize: '0.75rem',
+                  minWidth: '45px',
+                  '& .MuiSelect-select': {
+                    py: 0.5,
+                    px: 1,
+                    pr: '28px !important'
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    border: 'none'
+                  }
+                }}
+                renderValue={(value) => {
+                  // Show only emoji in the closed dropdown
+                  if (value === 'GUI') return '🤖';
+                  if (value === 'API-Wendys') return '🍔';
+                  if (value === 'API-McDonalds') return '🍟';
+                  return '🤖';
+                }}
+              >
+                <MenuItem value="GUI">🤖 GUI Mode</MenuItem>
+                <MenuItem value="API-Wendys">🍔 Wendy's API</MenuItem>
+                <MenuItem value="API-McDonalds">🍟 McDonald's API</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+
+          <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
             Fast Food Ordering Agent
           </Typography>
         </Box>

@@ -15,6 +15,7 @@ export interface SessionManagerPrompt {
   prompt: string;
   session_id?: string | null;
   current_geolocation?: BrowserGeoLocation | null;
+  ordering_mode?: string | null;
 }
 
 export interface SessionManagerChatResult {
@@ -51,13 +52,15 @@ export async function sendSessionChat(
   user: string,
   prompt: string,
   sessionId?: string | null,
-  geolocation?: BrowserGeoLocation | null
+  geolocation?: BrowserGeoLocation | null,
+  orderingMode?: string | null
 ): Promise<SessionManagerChatResult> {
   const payload: SessionManagerPrompt = {
     user,
     prompt,
     session_id: sessionId,
     current_geolocation: geolocation,
+    ordering_mode: orderingMode,
   };
 
   const response = await fetch(`${BACKEND_URL}/${user}/sessions/chat`, {
