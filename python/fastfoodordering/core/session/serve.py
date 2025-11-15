@@ -208,6 +208,27 @@ async def handle_browser_type(user: str, session_id: str, text_input: BrowserTex
             detail=f"Error forwarding text input: {str(e)}"
         )
 
+@app.post("/{user}/release")
+def release_instance(user: str):
+    """Manually release the instance lock for a user"""
+    if shared.session_manager.active_user == user:
+        shared.session_manager.active_user = None
+        shared.session_manager.last_activity = None
+        return {"message": "Instance lock released successfully"}
+    elif shared.session_manager.active_user is None:
+        return {"message": "Instance is not locked"}
+    else:
+        return {"error": "You don't have the lock", "locked_by": shared.session_manager.active_user}
+
+@app.get("/instance/status")
+def instance_status():
+    """Check the current lock status of the instance"""
+    return {
+        "locked": shared.session_manager.active_user is not None,
+        "active_user": shared.session_manager.active_user,
+        "last_activity": shared.session_manager.last_activity
+    }
+
 def on_exit():
     print("Performing exit sequence...")
     container_ids = list(map(lambda x: x.id, shared.session_ids_to_containers.values()))
