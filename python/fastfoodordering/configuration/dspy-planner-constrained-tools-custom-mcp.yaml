@@ -26,6 +26,7 @@ tools:
     Current Task: {subtask}
     Selected tool is {name}. Now determine the arguments:
 
+planner_type: dspy
 planner:
   visibility_settings:
     tools_visible: True

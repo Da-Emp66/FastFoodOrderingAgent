@@ -2,20 +2,24 @@ tool_mode: constrained
 tools:
   custom_tools:
     - function_name: screenshot
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver.py
     - function_name: navigate
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver.py
     - function_name: scroll
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver.py
+    - function_name: click_element_by_its_text_content
+      import_spec: core/web/toolserver.py
     - function_name: click_element_by_box_label_number
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver.py
     - function_name: type_text_by_box_label_number
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver.py
+    - function_name: fill_all_text_boxes_with
+      import_spec: core/web/toolserver.py
     # - function_name: null
   import_hooks:
     - spec:
         function_name: init_globals
-        import_spec: core/web/toolserver_desktop.py
+        import_spec: core/web/toolserver.py
       args: []
       kwargs: {}
   browser_visibility:
@@ -54,8 +58,25 @@ tools:
     Banned Tools: {banned_tools}
     Selected tool is {name}. Now determine the arguments:
 
-planner_type: dspy
+planner_type: general
 planner:
+  prompt_template: |
+    You are an expert who can evaluate if a given subtask in the process of completing an overall goal
+    was successful or not and planning what the next steps are based on 
+    Your sole job is to determine what the next action to perform is based on the 'overall_goal',
+    previously completed steps and tool calls, and current browser screen.
+
+    (Over-arching complex task to complete) overall_goal: '{overall_goal}'
+    The possible tools available on this step are:
+    {tool_options}
+
+    1. Your output should ALWAYS include ONLY:
+     - Your description about the current screen of the browser.
+     - Your reasoning about the previous actions and whether or not they were successful.
+     - The next subtask to perform based on your reasoning. This should be a description of what the next step is. An example would be: "Type the text '123 Main St' into the text field at label number N to provide your address to the website." IF THERE IS A BOX NUMBER AVAILABLE FOR THIS ACTION, ALWAYS PROVIDE THAT LABEL NUMBER IN YOUR SUBTASK.
+    2. Make sure you do not repeatedly choose tools that have already been called on this same screen if those tools did not change the screen and did not make progress towards the overall_goal.
+    3. Make sure you are never caught in a loop making the same mistakes you made previously on the same screens.
+    4. ALWAYS CLOSE POP-UPs before continuing on a screen. This is VERY IMPORTANT.
   visibility_settings:
     tools_visible: True
 browser_visibility_mode: ${BROWSER_VISIBILITY_MODE}

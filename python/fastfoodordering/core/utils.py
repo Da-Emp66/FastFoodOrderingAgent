@@ -15,6 +15,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import warnings
 import cv2
+import numpy as np
 import typing_extensions
 from box import Box
 import dspy
@@ -475,6 +476,9 @@ class ConstrainedToolCaller(ToolCaller):
                 )
             )
 
+class History(BaseModel):
+    messages: List[Dict[str, Any]] = []
+
 #########################################################
 ### Image
 #########################################################
@@ -556,6 +560,36 @@ def resize_cv2_image(image: cv2.typing.MatLike, params: ImageResizeConfiguration
     elif isinstance(params, AbsolutePixelwiseSize):
         image = cv2.resize(image, (params.width, params.height), interpolation=cv2.INTER_LINEAR)
     return image
+
+def cv2_image_to_base64(image: cv2.typing.MatLike, file_type='.jpg') -> str:
+    _, buffer = cv2.imencode(file_type, image)
+    return base64.b64encode(buffer).decode('utf-8')
+
+def create_black_image(width=256, height=256, channels=1) -> cv2.typing.MatLike:
+    """
+    Create an all-black image using OpenCV and NumPy.
+
+    Args:
+        width (int): Width of the image in pixels.
+        height (int): Height of the image in pixels.
+        channels (int): Number of color channels (1=grayscale, 3=RGB/BGR).
+
+    Returns:
+        np.ndarray: Black image array.
+    """
+    # Validate inputs
+    if not (isinstance(width, int) and isinstance(height, int) and isinstance(channels, int)):
+        raise ValueError("Width, height, and channels must be integers.")
+    if width <= 0 or height <= 0:
+        raise ValueError("Width and height must be positive integers.")
+    if channels not in (1, 3, 4):
+        raise ValueError("Channels must be 1 (grayscale), 3 (BGR), or 4 (BGRA).")
+    # Create a black image (all zeros)
+    black_img = np.zeros((height, width, channels), dtype=np.uint8)
+    return black_img
+
+def present_or_black(image: Optional[cv2.typing.MatLike] = None) -> cv2.typing.MatLike:
+    return image if image is not None else create_black_image()
 
 def IoU(boxA: List[float], boxB: List[float]):
     # Unpack coordinates

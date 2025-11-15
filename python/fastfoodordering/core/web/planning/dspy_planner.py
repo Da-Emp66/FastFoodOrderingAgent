@@ -3,69 +3,66 @@ from typing import Any, Dict, Optional, Union
 import cv2
 import dspy
 
-from core.web.planning.interface import PlannerConfiguration, PlannerVisibilitySettings
+from core.web.planning.interface import BrowserActionPlanner, PlannerConfiguration
 from core.utils import FINISH_TOKEN, from_config
 from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller, dspy_image_or_blank
 
-class DSPyPlannerConfiguration(PlannerConfiguration):
-    visibility_settings: PlannerVisibilitySettings = PlannerVisibilitySettings()
-
-class DSPyPlanner:
+class DSPyPlanner(BrowserActionPlanner):
     class WebToolOutputEvaluatorSignature(dspy.Signature):
-        """You are an expert who can evaluate if a given subtask in the process of completing an overall goal
+        """You are an expert who can evaluate if a given subtask in the process of completing an overall goal 
         was successful or not and planning what the next steps are based on 
-        Your sole job is to determine what the next action to perform is based on the 'overall_goal',
+        Your sole job is to determine what the next action to perform is based on the 'overall_goal', 
         previously completed steps and tool calls, and current browser state."""
 
-        overall_goal: str = dspy.InputField(desc="The over-arching complex task to complete.")
+        overall_goal: str = dspy.InputField(desc="The over-arching complex task to complete. ")
         previous_browser_screenshot: dspy.Image = dspy.InputField(
-            desc="Image of what the browser looked like last time, before the last interaction." \
-            "(This, along with 'current_browser_screenshot' can help tell you if the last call" \
-            "succeeded or not.) Blank if no previous interactions"
+            desc="Image of what the browser looked like last time, before the last interaction. " \
+            "(This, along with 'current_browser_screenshot' can help tell you if the last call " \
+            "succeeded or not.) Blank if no previous interactions "
         )
         previous_subtask: str = dspy.InputField(
-            desc="The subtask that was either completed or errored out in the last step." \
-            "See the 'previous_tool_call_name', 'previous_tool_call_args', and 'previous_tool_call_output' fields" \
-            "as well as the 'previous_browser_screenshot' and 'current_browser_screenshot' fields to determine if" \
-            "the previous tool call was successful."
+            desc="The subtask that was either completed or errored out in the last step. " \
+            "See the 'previous_tool_call_name', 'previous_tool_call_args', and 'previous_tool_call_output' fields " \
+            "as well as the 'previous_browser_screenshot' and 'current_browser_screenshot' fields to determine if " \
+            "the previous tool call was successful. "
         )
-        previous_tool_call: str = dspy.InputField(desc="The name of the tool called in the previous step")
-        previous_tool_call_output: str = dspy.InputField(desc="The output of the previous tool call.")
+        previous_tool_call: str = dspy.InputField(desc="The name of the tool called in the previous step ")
+        previous_tool_call_output: str = dspy.InputField(desc="The output of the previous tool call. ")
         current_browser_screenshot: dspy.Image = dspy.InputField(
-            desc="Image of what the browser currently looks like based on any previous interactions." \
+            desc="Image of what the browser currently looks like based on any previous interactions. " \
             "Blank if no previous interactions"
         )
         current_browser_snapshot: str = dspy.InputField(
-            desc="Snapshot containing refs to buttons and interactable divs in the current browser page"
+            desc="Snapshot containing refs to buttons and interactable divs in the current browser page "
         )
         reasoning: str = dspy.OutputField(
-            desc="This should never be 'None'. First describe what the browser looks like at the current time." \
-            "Then evaluate if the previous tool call was successful." \
-            "Then, based on these thoughts, reason about what should be the 'next_task' based on the browser's state and the 'overall_goal'." \
-            "If the previous tool call was not successful, give your thoughts as to why, and give details on what different to try next time in the 'next_task' field."
+            desc="This should never be 'None'. First describe what the browser looks like at the current time. " \
+            "Then evaluate if the previous tool call was successful based on if the screen changed at all. If the screen did not change at all, then the previous tool call was not the correct tool to call. " \
+            "Then, based on these thoughts, reason about what should be the 'next_task' based on the browser's state and the 'overall_goal'. " \
+            "If the previous tool call was not successful, give your thoughts as to why, and give details on what different to try next time in the 'next_task' field. "
         )
         next_subtask: str = dspy.OutputField(
-            desc="Instructions for what sub-task to do now to work towards the overall goal based on the" \
-            f"current state, or, if the overall goal is complete, fill with {FINISH_TOKEN} in all caps." \
-            "Make sure to describe this step in detail in human-readable natural language. This field should never be 'None'." \
-            "Only reference buttons and items directly visible in the 'current_browser_screenshot'. If a required button is not directly visible," \
-            "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click." \
-            "If another click is required, you should include that in the next subtask." \
-            "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything." \
-            "NOTE: If there is a pop-up blocking a button on the screen, close out of that pop-up first before any other steps." \
-            "NOTE: Always share your location with the browser."
+            desc="Instructions for what sub-task to do now to work towards the overall goal based on the " \
+            f"current browser screen state, or, if the overall goal is complete, fill with {FINISH_TOKEN} in all caps. " \
+            "Make sure to describe this step in detail in human-readable natural language. This field should never be 'None'. " \
+            "Only reference buttons and items directly visible in the 'current_browser_screenshot'. If a required button is not directly visible, " \
+            "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click or typing a string into a text box. If the button or box is labeled by a number, ALWAYS include that number in your subtask description. " \
+            "If another click is required, you should include that in the next subtask. " \
+            "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything. " \
+            "NOTE: ALWAYS share your location with the browser. " \
+            "NOTE: ALWAYS CLOSE POP-UPs FIRST before continuing on a screen. This is VERY IMPORTANT. " \
         )
         tools: list[dspy.Tool] = dspy.InputField(
-            desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language."
+            desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language. "
         )
         history: dspy.History = dspy.InputField(
-            desc="Previous browser interactions, tool calls, and reasoning." \
-            "PAY ATTENTION TO THIS FIELD AND DO NOT REPEAT ACTIONS THAT ARE NOT WORKING MORE THAN ONCE." \
-            "Try to reason and come up with a different solution if your original idea is not working."
+            desc="Previous browser interactions, tool calls, and reasoning. " \
+            "PAY ATTENTION TO THIS FIELD AND DO NOT REPEAT ACTIONS THAT ARE NOT WORKING MORE THAN ONCE. " \
+            "Try to reason and come up with a different solution if your original idea is not working. "
         )
 
-    def __init__(self, configuration: Union[Dict[str, Any], DSPyPlannerConfiguration]):
-        self.configuration: DSPyPlannerConfiguration = from_config(configuration, DSPyPlannerConfiguration)
+    def __init__(self, configuration: Union[Dict[str, Any], PlannerConfiguration]):
+        self.configuration: PlannerConfiguration = from_config(configuration, PlannerConfiguration)
         # Instantiate task evaluator
         self.next_step_planner = dspy.Predict(self.WebToolOutputEvaluatorSignature)
         self.stream_next_step_planning = dspy.streamify(

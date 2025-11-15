@@ -26,6 +26,7 @@ from core.web.tool_calling.interface import FILEPATH_REGEX, BrowserToolCaller
 
 class ConstrainedBrowserToolCallerConfiguration(ConstrainedToolCallerConfiguration):
     browser_visibility: BrowserVisibilityConfiguration = BrowserVisibilityConfiguration()
+    tool_specific_prompt_additions: Dict[str, str] = {}
 
 class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
     def __init__(self, configuration: Union[Dict[str, Any], ConstrainedBrowserToolCallerConfiguration]):
@@ -84,12 +85,16 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                         # logit_bias=logit_bias,
                     )
                     name = json.loads(self.lm["tool_name_json"])["tool_name"]
+
+                tool_args_prompt = (self.configuration.tool_args_user_prompt_format + \
+                    self.configuration.tool_specific_prompt_additions.get(name, "")) \
+                    .replace("{overall_goal}", overall_goal) \
+                    .replace("{subtask}", subtask) \
+                    .replace("{name}", name) \
+                    .replace("{banned_tools}", str(banned_tools))
+                
                 with guidance_user():
-                    self.lm += self.configuration.tool_args_user_prompt_format \
-                        .replace("{overall_goal}", overall_goal) \
-                        .replace("{subtask}", subtask) \
-                        .replace("{name}", name) \
-                        .replace("{banned_tools}", str(banned_tools))
+                    self.lm += tool_args_prompt
                 with guidance_assistant():
                     if name in self.tools:
                         selected_tool = self.tools[name]

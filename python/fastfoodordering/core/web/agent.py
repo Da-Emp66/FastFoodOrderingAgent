@@ -1,6 +1,5 @@
 import base64
 import enum
-import hashlib
 import json
 import os
 import threading
@@ -16,6 +15,7 @@ from core.utils import (
     FINISH_TOKEN,
     BaseModelJSONEncoder,
     GeneratedToolSpec,
+    History,
     ImageResizeConfiguration,
     IoU,
     Relative2DScale,
@@ -24,14 +24,15 @@ from core.utils import (
     resize_cv2_image,
 )
 from core.web.interface import BrowserVisibilityMode
-from core.web.planning.interface import PlannerTypes
-from core.web.planning.dspy_planner import DSPyPlanner, DSPyPlannerConfiguration
+from core.web.planning.interface import PlannerConfiguration, PlannerTypes
+from core.web.planning.dspy_planner import DSPyPlanner
 from core.web.tool_calling.interface import ToolModes
 from core.web.tool_calling.code_tools import CodeBrowserToolCaller
 from core.web.tool_calling.constrained_json_tools import ConstrainedBrowserToolCaller
-from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller
+from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller, dspy_image_or_blank
 from core.web.tool_calling.stagehand_tools import StageHandBrowserToolCaller
 from core.web.parser import FilterConfig, ParseRequest, ParseRequestConfiguration, ParserConfiguration, ParserDetails, ParserMode, get_item_by_label_number
+from core.web.planning.general_planner import GeneralPlanner
 
 class Plan(BaseModel):
     plan: str
@@ -122,18 +123,21 @@ class BrowserAgentConfiguration(BaseModel):
     tool_mode: ToolModes = ToolModes.Constrained
     tools: Optional[Dict[str, Any]] = None
     planner_type: PlannerTypes = PlannerTypes.DSPy
-    planner: Union[Dict[str, Any]] = DSPyPlannerConfiguration()
+    planner: Union[Dict[str, Any]] = PlannerConfiguration()
     browser_visibility_mode: BrowserVisibilityMode = BrowserVisibilityMode.Default
     parser: ParserConfiguration = ParserConfiguration()
     image_resize_configuration: ImageResizeConfiguration = Relative2DScale()
     screenshot_call_configuration: ScreenshotConfiguration = ScreenshotConfiguration()
     blacklisting: Optional[BlacklistingConfiguration] = BlacklistingConfiguration()
+    include_image_in_history: bool = False
+    max_history_length: int = 5
 
 class BrowserAgentSystem:
     def __init__(self, configuration: Union[BrowserAgentConfiguration, Any]):
         self.configuration: BrowserAgentConfiguration = from_config(configuration, BrowserAgentConfiguration)
         match self.configuration.planner_type:
             case PlannerTypes.DSPy: self.planner = DSPyPlanner(self.configuration.planner)
+            case PlannerTypes.General: self.planner = GeneralPlanner(self.configuration.planner)
             case _: self.planner = None
         match self.configuration.tool_mode:
             case ToolModes.Code: self.tool_caller = CodeBrowserToolCaller(self.configuration.tools)
@@ -141,7 +145,8 @@ class BrowserAgentSystem:
             case ToolModes.DSPy: self.tool_caller = DSPyBrowserToolCaller(self.configuration.tools)
             case ToolModes.StageHand: self.tool_caller = StageHandBrowserToolCaller(self.configuration.tools)
             case _: self.tool_caller = None
-        self.history = dspy.History(messages=[])
+
+        self.history = History() if not isinstance(self.planner, DSPyPlanner) else dspy.History(messages=[])
         # This acts as an enforcement policy not to click on
         # bboxes that we have already clicked on in images
         # we have already seen. Key is the screenshot hash (hex bytes)
@@ -373,7 +378,8 @@ class BrowserAgentSystem:
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             if current_browser_snapshot is not None: print(current_browser_snapshot, flush=True)
 
-            if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent:
+            if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent \
+                and current_browser_screenshot_preprocessed is not None:
                 cv2.imwrite(shared.CURRENT_SCREENSHOT_PATH, current_browser_screenshot_preprocessed)
 
             ### Step 1: Determine sub-task
@@ -444,15 +450,30 @@ class BrowserAgentSystem:
                 await self.show_browser(current_browser_screenshot_preprocessed)
             current_browser_snapshot = await self.tool_caller.take_snapshot()
             print("Post-action browser screenshot obtained.", flush=True)
+            
+            if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.OnBrowserAgent \
+                and current_browser_screenshot_preprocessed is not None:
+                cv2.imwrite(shared.CURRENT_SCREENSHOT_PATH, current_browser_screenshot_preprocessed)
 
             # Append the current messages to the history
             print("Updating current history...", flush=True)
-            self.history.messages.append({
+            message_to_add_to_history = {
                 "overall_goal": overall_goal,
                 "subtask": subtask,
                 "tool_call": tool_prediction_response,
                 "tool_call_result": tool_call_result,
-            })
+            }
+            if self.configuration.include_image_in_history:
+                message_to_add_to_history.update({
+                    "screenshot_with_bounding_boxes": previous_browser_screenshot_preprocessed if not isinstance(self.planner, DSPyPlanner) \
+                        else dspy_image_or_blank(previous_browser_screenshot_preprocessed),
+                })
+            self.history.messages.append(message_to_add_to_history)
+            if self.configuration.max_history_length is not None \
+                and self.configuration.max_history_length != -1 \
+                and len(self.history.messages) > self.configuration.max_history_length:
+                self.history.messages.pop(0)
+            
             previous_subtask = subtask
             print("History updated.", flush=True)
 

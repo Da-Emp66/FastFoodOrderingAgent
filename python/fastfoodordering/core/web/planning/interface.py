@@ -8,10 +8,8 @@ import dspy
 from pydantic import BaseModel
 
 class PlannerTypes(str, enum.Enum):
+    General = "general"
     DSPy = "dspy"
-
-class PlannerConfiguration(BaseModel):
-    disable: bool = False
 
 class PlannerVisibilitySettings(BaseModel):
     previous_screenshot_visible: bool = True
@@ -23,6 +21,11 @@ class PlannerVisibilitySettings(BaseModel):
     history_visible: bool = True
     snapshot_visible: bool = False
     tools_visible: bool = False
+
+class PlannerConfiguration(BaseModel):
+    prompt_template: Optional[str] = None
+    disable: bool = False
+    visibility_settings: PlannerVisibilitySettings = PlannerVisibilitySettings()
 
 class BrowserActionPlanner(metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -36,7 +39,7 @@ class BrowserActionPlanner(metaclass=abc.ABCMeta):
         current_browser_screenshot: Optional[cv2.typing.MatLike] = None,
         current_browser_snapshot: Optional[str] = None,
         tool_caller: Optional[Union[Any, dspy.Tool]] = None,
-        history: Optional[dspy.History] = None,
+        history: Optional[Union[Any, dspy.History]] = None,
     ) -> str:
         raise NotImplementedError()
     
