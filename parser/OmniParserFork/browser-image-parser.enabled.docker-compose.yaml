@@ -1,0 +1,25 @@
+services:
+  fastfood-browserimageparser:
+    container_name: fastfood-browserimageparser
+    image: fastfood-browserimageparser:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - ${PARSER_PORT:-8055}:${PARSER_PORT:-8055}
+    volumes:
+      - ./weights:/app/weights
+      - ${HOME}/.paddleocr:/root/.paddleocr
+      - ${HOME}/.EasyOCR:/root/.EasyOCR
+    environment:
+      PARSER_PORT: ${PARSER_PORT:-8055}
+      DEVICE: ${PARSER_DEVICE:-cpu}
+      USE_LOCAL_SEMANTICS: false
+      ANNOTATION_SCALE_FACTOR: 4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

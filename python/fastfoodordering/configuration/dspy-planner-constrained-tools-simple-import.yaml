@@ -36,3 +36,7 @@ planner:
   visibility_settings:
     tools_visible: True
 browser_visibility_mode: debug
+
+parser:
+  parser_uri: http://${PARSER_HOST}:${PARSER_PORT}
+  parser_mode: ${PARSER_MODE}

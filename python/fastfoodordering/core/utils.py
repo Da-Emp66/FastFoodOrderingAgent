@@ -1,4 +1,5 @@
 import abc
+import base64
 from dataclasses import dataclass
 import functools
 import importlib
@@ -12,6 +13,7 @@ import socket
 from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import warnings
+import cv2
 import typing_extensions
 from box import Box
 import dspy
@@ -27,6 +29,10 @@ from pydantic import BaseModel, create_model
 import yaml
 
 FINISH_TOKEN = "<|COMPLETED_OVERALL_TASK|>"
+
+#########################################################
+### Configuration
+#########################################################
 
 T = type
 _BasicConfigType = Union[Box, dict, str]
@@ -118,6 +124,17 @@ def populate_environment_specifications(spec: Union[str, Dict[str, Any]], **kwar
 def extract_final_message_content(response: str):
     """Returns only the final response, with all proper thinking tokens and sections removed."""
     return response.split("|>")[-1]
+
+
+class BaseModelJSONEncoder(json.JSONEncoder):
+    def default(self, obj: Any):
+        if isinstance(obj, BaseModel):
+            return obj.model_dump_json()
+        return super().default(obj)
+
+#########################################################
+### Tools
+#########################################################
 
 class CustomToolSpecification(BaseModel):
     function_name: Optional[str]
@@ -439,4 +456,66 @@ class ConstrainedToolCaller(ToolCaller):
                     args=args,
                 )
             )
-        
+
+
+
+class VisibleDotCoordinateOptions(BaseModel):
+    radius: int = 10
+    color: cv2.typing.Scalar = (0,0,255)
+    thickness: int = -1
+
+class VisibleAnchoredEmbedImageOptions(BaseModel):
+    representation_image_path: str
+    offset_x: int
+    offset_y: int
+    scale: float
+
+def place_coordinate_on_image(
+    image: cv2.typing.MatLike,
+    coordinate: Tuple[int, int],
+    coordinate_system: Literal['relative', 'tars'] = 'relative',
+    coordinate_options: Union[VisibleDotCoordinateOptions, VisibleAnchoredEmbedImageOptions] = VisibleDotCoordinateOptions()
+) -> cv2.typing.MatLike:
+    height, width, _color_dims = image.shape
+    processed_coordinate = coordinate
+    if coordinate_system == 'relative':
+        processed_coordinate = (int(coordinate[0] * width), int(coordinate[1] * height))
+    elif coordinate_system == 'tars':
+        from core.web.tars_like import TARSLikeBrowserAgentSystem
+        processed_coordinate = TARSLikeBrowserAgentSystem.calculate_coordinate(
+            original_image_height=height,
+            original_image_width=width,
+            model_output_height=coordinate[1],
+            model_output_width=coordinate[0],
+        )
+    else:
+        print(f"Unsupported coordinate system `{coordinate_system}`. Defaulting to keeping coordinate the same as input coordinate.")
+    if isinstance(coordinate_options, VisibleDotCoordinateOptions):
+        image_with_coordinate_embed = cv2.circle(image, processed_coordinate, **coordinate_options.model_dump())
+    elif isinstance(coordinate_options, VisibleAnchoredEmbedImageOptions):
+        # Use IMREAD_UNCHANGED to preserve alpha channel if present
+        overlay = cv2.imread(coordinate_options.representation_image_path, cv2.IMREAD_UNCHANGED)
+        # Define the position where the overlay will be placed
+        x_coord = coordinate[0] + coordinate_options.offset_x
+        y_coord = coordinate[1] + coordinate_options.offset_y
+        # Get dimensions of the overlay
+        h, w = overlay.shape[:2]
+        # Extract the region of interest (ROI) from the background
+        roi = image_with_coordinate_embed[y_coord:y_coord+h, x_coord:x_coord+w]
+        # If the overlay has an alpha channel (transparency)
+        if overlay.shape[2] == 4:
+            # Split the overlay into BGR and Alpha channels
+            overlay_bgr = overlay[:, :, :3]
+            overlay_alpha = overlay[:, :, 3] / 255.0  # Normalize alpha to range [0, 1]
+            # Blend the overlay with the ROI
+            for c in range(3):  # Loop over B, G, R channels
+                roi[:, :, c] = (overlay_alpha * overlay_bgr[:, :, c] + (1 - overlay_alpha) * roi[:, :, c])
+        else:
+            # If no alpha channel, simply replace the ROI with the overlay
+            roi[:] = overlay
+        # Place the blended ROI back into the background
+        image_with_coordinate_embed[y_coord:y_coord+h, x_coord:x_coord+w] = roi
+    else:
+        print("Unsupported coordinate options. Failed to place coordinates on image.")
+        return image_with_coordinate_embed
+    return image_with_coordinate_embed

@@ -1,9 +1,11 @@
+import asyncio
 import os
 from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
 import dspy
 
 from core.web.agent import BrowserAgentSystem
+from core.web.tars_like import TARSLikeBrowserAgentSystem
 
 # Load environment variables
 dotenv_to_use = find_dotenv()
@@ -108,10 +110,11 @@ if __name__ == "__main__":
     os.environ["SESSION_ID"] = "id"
     os.environ["SESSION_OBJECTIVE"] = "Order me a burger from Burger King (https://www.bk.com/)"
 
+    # browser_search_agent = TARSLikeBrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
     browser_search_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
 
     ### Example inference
-    browser_search_agent(os.environ["SESSION_OBJECTIVE"])
+    asyncio.run(browser_search_agent())
 
     ### Example inference
     # browser_search_agent(

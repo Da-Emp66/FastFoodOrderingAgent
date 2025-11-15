@@ -42,6 +42,8 @@ class SessionManagerPrompt(BaseModel):
     """If the user has a session open and this query is for updating that session, pass the session_id returned when you first created the session."""
     current_geolocation: Optional[BrowserGeoLocation] = None
     """The user's current geolocation. To be used for the browser proxied location on session launch."""
+    ordering_mode: Optional[str] = None
+    """The ordering mode: 'GUI' for AI agent, 'API-Wendys' or 'API-McDonalds' for hardcoded script ordering."""
 
 class SessionManagerToolCallResult(BaseModel):
     result: str
@@ -104,6 +106,15 @@ class SessionManager:
         self.last_activity: Optional[float] = None  # Timestamp of last activity
     
     async def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+        # Check if using API mode (hardcoded scripts)
+        if prompt.ordering_mode and prompt.ordering_mode.startswith("API-"):
+            return await self.handle_api_ordering(prompt)
+
+        # Otherwise use GUI mode (current AI agent behavior)
+        return await self.handle_gui_ordering(prompt)
+
+    async def handle_gui_ordering(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+        """Handle ordering using the AI agent (GUI mode)"""
         # Check and enforce single-user-per-instance lock
         current_time = time.time()
         TIMEOUT = 3600  # 1 hour timeout
@@ -154,7 +165,7 @@ class SessionManager:
             generated_tool = None
             result = f"Failed to call tool: {e}"
             print(result)
-        
+
         if generated_tool is not None:
             try:
                 result = await self.tool_caller.call_tool(generated_tool)
@@ -167,6 +178,53 @@ class SessionManager:
             response=response,
             session_id=session_id,
         )
+
+    async def handle_api_ordering(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+        """Handle ordering using hardcoded scripts (API mode)"""
+        # Extract food item from the prompt
+        food_item = self.extract_food_item(prompt.prompt)
+
+        # Determine which script to call
+        if prompt.ordering_mode == "API-Wendys":
+            # TODO: implement wendys_script
+            # result = await call_wendys_script(food_item)
+            response = f"API Mode: Would order '{food_item}' from Wendy's (script not implemented yet)"
+        elif prompt.ordering_mode == "API-McDonalds":
+            # TODO: implement mcdonalds_script
+            # result = await call_mcdonalds_script(food_item)
+            response = f"API Mode: Would order '{food_item}' from McDonald's (script not implemented yet)"
+        else:
+            response = f"Unknown ordering mode: {prompt.ordering_mode}"
+
+        return SessionManagerChatResult(
+            response=response,
+            session_id=prompt.session_id,
+        )
+
+    def extract_food_item(self, prompt: str) -> str:
+        """Extract food item name from user prompt using keyword matching"""
+        # List of known menu items (can be expanded)
+        KNOWN_ITEMS = [
+            # Wendy's items
+            "Baconator", "Dave's Single", "Dave's Double", "Dave's Triple",
+            "Junior Cheeseburger", "Spicy Chicken Sandwich", "Asiago Ranch Chicken Club",
+            "Classic Chicken Sandwich", "Homestyle Chicken Sandwich",
+            "Son of Baconator", "Pretzel Bacon Pub", "Big Bacon Classic",
+
+            # McDonald's items
+            "Big Mac", "Quarter Pounder", "McChicken", "Filet-O-Fish",
+            "McDouble", "Cheeseburger", "Hamburger", "Chicken McNuggets",
+            "McFlurry", "Happy Meal", "Egg McMuffin", "Sausage McMuffin",
+        ]
+
+        # Check for exact matches (case insensitive)
+        prompt_lower = prompt.lower()
+        for item in KNOWN_ITEMS:
+            if item.lower() in prompt_lower:
+                return item
+
+        # Fallback: return the entire prompt (let the script handle it)
+        return prompt.strip()
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
         container_spec = populate_environment_specifications(
@@ -209,7 +267,7 @@ class SessionManager:
                             print(f"WebSocket closed, reconnecting to {session_url}")
                             break
 
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY")))
 
             except Exception as e:
                 BACKEND_LOGGER.error(f"Error in screenshot generator: {e}\n{traceback.format_exc()}")
@@ -218,7 +276,7 @@ class SessionManager:
                 BACKEND_LOGGER.info(f"Closing {user} websocket connection to session {session_id}")
 
             # Short delay before attempting reconnect
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_RETRY_DELAY")))
 
     # def screenshot(self, user: str, session_id: str) -> cv2.typing.MatLike:
     #     session = self.sessions.get(user, {}).get(session_id, None)

@@ -8,9 +8,9 @@ from core.web.agent import BrowserAgentSystem
 from core.utils import FINISH_TOKEN
 
 MAX_TASK_ITERATIONS = os.getenv("MAX_TASK_ITERATIONS", -1)
-
-MAX_WEBSOCKET_FAILURES = os.getenv("MAX_WEBSOCKET_FAILURES", -1)
+# MAX_WEBSOCKET_FAILURES = os.getenv("MAX_WEBSOCKET_FAILURES", -1)
 CURRENT_SCREENSHOT_PATH = os.getenv("CURRENT_SCREENSHOT_PATH", "/tmp/fast-food-custom-stagehand-server/tmp.jpg")
+CURRENT_IMAGE_PARSE_METADATA_PATH = os.getenv("CURRENT_IMAGE_PARSE_METADATA_PATH", "/tmp/fast-food-custom-stagehand-server/tmp.json")
 NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.getenv(
     "NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH",
     str(Path(__file__).parent.parent.parent / "assets" / "no_browser_placeholder.jpg")

@@ -9,6 +9,7 @@ A prototype application enabling users to issue voice or text commands to create
     . scripts/install-cuda.sh
     . scripts/install-docker.sh
     . scripts/download-llamacpp-gguf.sh
+    . scripts/download-parser-weights.sh
     . scripts/build-docker.sh
     docker compose up -d
 

@@ -15,6 +15,7 @@ export interface SessionManagerPrompt {
   prompt: string;
   session_id?: string | null;
   current_geolocation?: BrowserGeoLocation | null;
+  ordering_mode?: string | null;
 }
 
 export interface SessionManagerChatResult {
@@ -39,6 +40,10 @@ export interface BrowserClickCoordinates {
   y: number;
 }
 
+export interface BrowserTextInput {
+  text: string;
+}
+
 /**
  * Main chat endpoint for session manager agent
  * POST /{user}/sessions/chat
@@ -47,13 +52,15 @@ export async function sendSessionChat(
   user: string,
   prompt: string,
   sessionId?: string | null,
-  geolocation?: BrowserGeoLocation | null
+  geolocation?: BrowserGeoLocation | null,
+  orderingMode?: string | null
 ): Promise<SessionManagerChatResult> {
   const payload: SessionManagerPrompt = {
     user,
     prompt,
     session_id: sessionId,
     current_geolocation: geolocation,
+    ordering_mode: orderingMode,
   };
 
   const response = await fetch(`${BACKEND_URL}/${user}/sessions/chat`, {
@@ -178,6 +185,33 @@ export async function sendBrowserClick(
 
   const response = await fetch(
     `${BACKEND_URL}/${user}/sessions/${sessionId}/click`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+}
+
+/**
+ * Send text input to the browser (types into currently focused element)
+ * POST /{user}/sessions/{session_id}/type
+ */
+export async function sendBrowserType(
+  user: string,
+  sessionId: string,
+  text: string
+): Promise<void> {
+  const payload: BrowserTextInput = { text };
+
+  const response = await fetch(
+    `${BACKEND_URL}/${user}/sessions/${sessionId}/type`,
     {
       method: 'POST',
       headers: {

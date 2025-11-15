@@ -39,7 +39,7 @@ class DSPyPlanner:
             desc="Snapshot containing refs to buttons and interactable divs in the current browser page"
         )
         reasoning: str = dspy.OutputField(
-            desc="This should never be 'None'. First describe what the browser looks like at the current time." \
+            desc="This should never be 'None'. First describe what the browser looks like at the current time, including any numbered box labels visible." \
             "Then evaluate if the previous tool call was successful." \
             "Then, based on these thoughts, reason about what should be the 'next_task' based on the browser's state and the 'overall_goal'." \
             "If the previous tool call was not successful, give your thoughts as to why, and give details on what different to try next time in the 'next_task' field."
@@ -48,10 +48,14 @@ class DSPyPlanner:
             desc="Instructions for what sub-task to do now to work towards the overall goal based on the" \
             f"current state, or, if the overall goal is complete, fill with {FINISH_TOKEN} in all caps." \
             "Make sure to describe this step in detail in human-readable natural language. This field should never be 'None'." \
+            "The screenshot shows UI elements labeled with numbered boxes (0, 1, 2, etc.). When describing actions, reference the box number if visible." \
+            "For example: 'Click box 5 to open the menu' or 'Type into box 3 for the search field'." \
             "Only reference buttons and items directly visible in the 'current_browser_screenshot'. If a required button is not directly visible," \
             "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click." \
             "If another click is required, you should include that in the next subtask." \
-            "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything."
+            "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything." \
+            "NOTE: If there is a pop-up blocking a button on the screen, close out of that pop-up first before any other steps." \
+            "NOTE: Always share your location with the browser."
         )
         tools: list[dspy.Tool] = dspy.InputField(
             desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language."

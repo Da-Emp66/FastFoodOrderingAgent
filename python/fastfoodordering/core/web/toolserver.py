@@ -3,9 +3,12 @@ import json
 import os
 import time
 from typing import Literal
+import cv2
 from fastmcp import FastMCP
 from stagehand import Stagehand, StagehandConfig, StagehandPage
 
+from core.web.agent import ParsedItemDetails
+from core.utils import place_coordinate_on_image
 import shared
 
 # Default browser geolocation is Orlando
@@ -16,13 +19,46 @@ BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
     "accuracy": 100
 }'''))
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
+MOST_RECENT_CLICK = None
+
 page: StagehandPage = None
 mcp = FastMCP("Custom StageHand MCP Server")
 
 @mcp.tool
+async def screenshot():
+    global page, MOST_RECENT_CLICK
+    # print("In function call `screenshot`...")
+    try:
+        path = shared.CURRENT_SCREENSHOT_PATH
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Take screenshot of only the visible viewport (not full_page)
+        # This ensures OmniParser labels match the visible area
+        await page._page.screenshot(path=path, full_page=False)
+
+        # Add visual marker for the most recent click
+        if MOST_RECENT_CLICK is not None:
+            # MOST_RECENT_CLICK now stores absolute viewport coordinates (vx, vy)
+            # We need to convert to relative coordinates (0-1) for place_coordinate_on_image
+            viewport_width = page._page.viewport_size['width']
+            viewport_height = page._page.viewport_size['height']
+            relative_x = MOST_RECENT_CLICK[0] / viewport_width
+            relative_y = MOST_RECENT_CLICK[1] / viewport_height
+            cv2.imwrite(
+                path,
+                place_coordinate_on_image(
+                    cv2.imread(path),
+                    coordinate=(relative_x, relative_y),
+                    coordinate_system='relative'
+                )
+            )
+        return path
+    except Exception as e:
+        return str(e)
+
+@mcp.tool
 async def navigate(url: str):
     global page
-    print("In function call `navigate`...")
+    # print("In function call `navigate`...")
     try:
         await page.goto(url)
         await page._page.context.grant_permissions(["geolocation"])
@@ -34,7 +70,7 @@ async def navigate(url: str):
 @mcp.tool
 async def scroll(direction: Literal["left", "right", "up", "down"], delta_pixels: float):
     global page
-    print("In function call `scroll`...")
+    # print("In function call `scroll`...")
     try:
         delta_x_pixels = 0.0
         delta_y_pixels = 0.0
@@ -51,83 +87,176 @@ async def scroll(direction: Literal["left", "right", "up", "down"], delta_pixels
         return str(e)
 
 @mcp.tool
-async def click_element_by_text(text: str):
-    global page
-    print("In function call `click_element_by_text`...")
+async def click_element_by_its_text_content(text: str):
+    global page, MOST_RECENT_CLICK
+    # print("In function call `click_element_by_text`...")
     try:
         any_elements_clicked = False
         for element in await page._page.get_by_text(text).all():
             # Check that the element is visible
             # NOTE: This relies on the LLM to give valid inputs on what is and is not visible
-            if await element.bounding_box() is not None:
+            bbox = await element.bounding_box()
+            if bbox is not None:
                 await element.click()
+                MOST_RECENT_CLICK = bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2
                 any_elements_clicked = True
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success" if any_elements_clicked else f"No elements with text '{text}' found in visible screen."
     except Exception as e:
         return str(e)
 
-@mcp.tool
-async def get_element_coordinates_by_text(text: str):
-    global page
-    print("In function call `get_element_coordinates_by_text`...")
-    try:
-        bboxes = []
-        for element in await page._page.get_by_text(text).all():
-            element_bounding_box = await element.bounding_box()
-            if element_bounding_box is not None:
-                bboxes.append((element_bounding_box["x"] + (element_bounding_box["width"] / 2), element_bounding_box["y"] + (element_bounding_box["height"] / 2)))
-        return (str(bboxes) if len(bboxes) > 0 else f"No elements with text '{text}' found in visible screen.")
-    except Exception as e:
-        return str(e)
+# @mcp.tool
+# async def click_coordinates(x: float, y: float):
+#     global page
+#     print("In function call `click_coordinates`...")
+#     try:
+#         await page._page.mouse.click(x, y)
+#         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
+#         return "success"
+#     except Exception as e:
+#         return str(e)
 
 @mcp.tool
-async def click_coordinates(x: float, y: float):
-    global page
-    print("In function call `click_coordinates`...")
+async def click_element_by_box_label_number(number: int):
+    global page, MOST_RECENT_CLICK
+    # print("In function call `click_by_box_label_number`...")
+
     try:
-        await page._page.mouse.click(x, y)
+        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
+        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
+        if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
+        if len(current_image_parse_metadata) <= number:
+            return f"[❌] Error: There is no box labeled by number {number}."
+        item = current_image_parse_metadata[number]
+        item = ParsedItemDetails.model_validate_json(item)
+        # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
+        center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
+        center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
+
+        await page.wait_for_load_state("domcontentloaded")
+
+        # Convert relative coordinates to absolute viewport coordinates
+        # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
+        vx = center_x_relative * page._page.viewport_size['width']
+        vy = center_y_relative * page._page.viewport_size['height']
+
+        await page.bring_to_front()
+        await page._page.mouse.move(vx, vy)
+        await page._page.mouse.click(vx, vy)
+
+        # Store absolute click coordinates for visual feedback
+        MOST_RECENT_CLICK = (vx, vy)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
-        return "success"
+        return f"[✅] Success: Clicked element labeled {number} at viewport coordinates ({vx:.1f}, {vy:.1f}), relative ({center_x_relative:.3f}, {center_y_relative:.3f})"
     except Exception as e:
         return str(e)
 
 @mcp.tool
-async def fill_text_box(text: str):
-    global page
-    print("In function call `fill_text_box`...")
+async def type_text_by_box_label_number(number: int, text: str):
+    """
+    Finds the element at the given box label number from OmniParser
+    and fills it with the specified text.
+    """
+    global page, MOST_RECENT_CLICK
+    # print("In function call `type_text_by_box_label_number`...")
+
+    try:
+        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH):
+            return "[❌] Error: There are no labeled boxes."
+        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
+        if current_image_parse_metadata is None:
+            return "[❌] Error: Image parse metadata is `null`. Try again."
+        if len(current_image_parse_metadata) <= number:
+            return f"[❌] Error: There is no box labeled by number {number}."
+
+        item = current_image_parse_metadata[number]
+        item = ParsedItemDetails.model_validate_json(item)
+
+        # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
+        center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
+        center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
+
+        # Convert relative coordinates to absolute viewport coordinates
+        # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
+        vx = center_x_relative * page._page.viewport_size['width']
+        vy = center_y_relative * page._page.viewport_size['height']
+
+        # Use JS to find the element at those coordinates
+        element_handle = await page.evaluate_handle(
+            """([x, y]) => document.elementFromPoint(x, y)""",
+            [vx, vy],
+        )
+        if not element_handle:
+            return f"[❌] Error: No element found at viewport ({vx:.1f}, {vy:.1f})"
+
+        # Wrap it back into a Playwright ElementHandle
+        element = element_handle.as_element()
+        if element is None:
+            return f"[❌] Error: Element at viewport ({vx:.1f}, {vy:.1f}) is not a valid input element"
+
+        # Optional: check visibility
+        if not await element.is_visible():
+            return f"[⚠️] Error: Element at viewport ({vx:.1f}, {vy:.1f}) is not visible"
+
+        # Fill the element
+        await element.click()
+        await element.fill(text)
+        await element.press("Enter")
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
+
+        # Store absolute click coordinates for visual feedback
+        bbox = await element.bounding_box()
+        MOST_RECENT_CLICK = (bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2)
+
+        return f"[✅] Success: Filled element labeled {number} at viewport ({vx:.1f}, {vy:.1f}) with text: {text}"
+    except Exception as e:
+        return f"[❌] Error: {str(e)}"
+
+@mcp.tool
+async def fill_all_text_boxes_with(text: str):
+    global page, MOST_RECENT_CLICK
+    # print("In function call `fill_text_box`...")
     try:
         for el in await page.query_selector_all("input, textarea"):
             if await el.is_visible() and await el.is_enabled():
                 try:
                     await el.fill(text)
                     await el.press("Enter")
+                    bbox = await el.bounding_box()
+                    MOST_RECENT_CLICK = bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2
                 except Exception:
                     pass  # skip read-only or non-fillable elements
+        return "success"
     except Exception as e:
         return str(e)
 
-@mcp.tool
-async def screenshot():
-    global page
-    print("In function call `screenshot`...")
-    try:
-        path = shared.CURRENT_SCREENSHOT_PATH
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        await page._page.screenshot(path=path, full_page=True)
-        return path
-    except Exception as e:
-        return str(e)
-    
-@mcp.tool
-async def set_location(latitude: float, longitude: float, accuracy: int = 0):
-    global page
-    print("In function call `set_location`...")
-    await page._page.context.set_geolocation({
-        "latitude": latitude,
-        "longitude": longitude,
-        "accuracy": accuracy,
-    })
+# @mcp.tool
+# async def get_element_coordinates_by_text(text: str):
+#     global page
+#     print("In function call `get_element_coordinates_by_text`...")
+#     try:
+#         bboxes = []
+#         for element in await page._page.get_by_text(text).all():
+#             element_bounding_box = await element.bounding_box()
+#             if element_bounding_box is not None:
+#                 bboxes.append((element_bounding_box["x"] + (element_bounding_box["width"] / 2), element_bounding_box["y"] + (element_bounding_box["height"] / 2)))
+#         return (str(bboxes) if len(bboxes) > 0 else f"No elements with text '{text}' found in visible screen.")
+#     except Exception as e:
+#         return str(e)
+
+# @mcp.tool
+# async def set_location(latitude: float, longitude: float, accuracy: int = 0):
+#     global page
+#     print("In function call `set_location`...")
+#     await page._page.context.set_geolocation({
+#         "latitude": latitude,
+#         "longitude": longitude,
+#         "accuracy": accuracy,
+#     })
+
+# @mcp.tool
+# async def find(description_of_thing_to_click_on: str):
+#     pass
 
 async def main():
     # Initialize StageHand webpage

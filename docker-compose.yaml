@@ -2,6 +2,7 @@ include:
   - ./ui/docker-compose.yaml
   - ./llama-cpp-server.${LLM_DEVICE_TYPE:-cpu}.docker-compose.yaml
   - ./python/fastfoodordering/docker-compose.yaml
+  - ./parser/OmniParserFork/browser-image-parser.${PARSER_MODE:-disabled}.docker-compose.yaml
 
 services:
   # Nginx reverse proxy with SSL/TLS

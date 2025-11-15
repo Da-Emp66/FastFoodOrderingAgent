@@ -10,10 +10,19 @@ import {
   TextField,
   IconButton,
   Collapse,
-  Tooltip
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material';
 import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close, FullscreenExit } from '@mui/icons-material';
-import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick } from '../services/api';
+import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick, sendBrowserType } from '../services/api';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
 
@@ -48,6 +57,25 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
   const { speak } = useSpeechSynthesis();
 
+  // Text input modal state
+  const [showTextModal, setShowTextModal] = useState(false);
+  const [modalTextInput, setModalTextInput] = useState('');
+  const [clickCoords, setClickCoords] = useState<{ x: number; y: number } | null>(null);
+
+  // Detect if mobile based on screen width (simple check)
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Ordering mode (GUI = AI agent, API = scripted ordering)
+  const [orderingMode, setOrderingMode] = useState<'GUI' | 'API-Wendys' | 'API-McDonalds'>('GUI');
+
   // Get user's geolocation
   const { location: geolocation, error: geoError, loading: geoLoading } = useGeolocation();
 
@@ -69,7 +97,8 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         username,
         text,
         sessionId,
-        geolocation
+        geolocation,
+        orderingMode
       );
 
       // Update session ID if returned
@@ -197,7 +226,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
 
     // Always log coordinates with session status
     if (sessionId) {
-      console.log(`Click at (${x.toFixed(3)}, ${y.toFixed(3)}) | Session: ${sessionId} | Sending to backend...`);
+      console.log(`Click at (${x.toFixed(3)}, ${y.toFixed(3)}) | Session: ${sessionId}`);
     } else {
       console.log(`Click at (${x.toFixed(3)}, ${y.toFixed(3)}) | browserview-false | No session - API call skipped`);
     }
@@ -212,15 +241,58 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
       setClickIndicators(prev => prev.filter(indicator => indicator.id !== clickId));
     }, 1000);
 
-    // Only send API call if session exists
+    // Only proceed if session exists
     if (sessionId) {
-      try {
-        await sendBrowserClick(username, sessionId, x, y);
-        console.log(`Click sent successfully`);
-      } catch (error) {
-        console.error('Error sending click:', error);
-      }
+      // Store coordinates and show modal to ask user what to do
+      setClickCoords({ x, y });
+      setShowTextModal(true);
     }
+  };
+
+  const handleJustClick = async () => {
+    if (!sessionId || !clickCoords) return;
+
+    try {
+      await sendBrowserClick(username, sessionId, clickCoords.x, clickCoords.y);
+      console.log(`Click sent successfully`);
+    } catch (error) {
+      console.error('Error sending click:', error);
+    }
+
+    // Close modal and reset
+    setShowTextModal(false);
+    setModalTextInput('');
+    setClickCoords(null);
+  };
+
+  const handleTypeText = async () => {
+    if (!sessionId || !clickCoords || !modalTextInput.trim()) return;
+
+    try {
+      // First click to focus the element
+      await sendBrowserClick(username, sessionId, clickCoords.x, clickCoords.y);
+      console.log(`Click sent to focus element`);
+
+      // Wait a brief moment for the element to focus
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Then type the text
+      await sendBrowserType(username, sessionId, modalTextInput);
+      console.log(`Text sent successfully: "${modalTextInput}"`);
+    } catch (error) {
+      console.error('Error sending text:', error);
+    }
+
+    // Close modal and reset
+    setShowTextModal(false);
+    setModalTextInput('');
+    setClickCoords(null);
+  };
+
+  const handleCancelModal = () => {
+    setShowTextModal(false);
+    setModalTextInput('');
+    setClickCoords(null);
   };
 
   return (
@@ -322,45 +394,57 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
           justifyContent: 'center',
           alignItems: 'center',
           minHeight: '100vh',
-          padding: '20px'
+          padding: isMobile ? '0' : '20px'
         }}
       >
-        {/* Phone Bezel */}
+        {/* Conditionally render phone bezel on desktop */}
         <Box
-          sx={{
+          sx={!isMobile ? {
             width: '100%',
-            maxWidth: '430px',
+            maxWidth: '550px', // Increased from 430px for better demo visibility
             minHeight: 'calc(100vh - 40px)',
             backgroundColor: '#1a1a1a',
             borderRadius: '50px',
             padding: '12px',
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
             position: 'relative'
+          } : {
+            width: '100%',
+            height: '100%'
           }}
         >
-          {/* Phone Notch */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '12px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: '140px',
-              height: '28px',
-              backgroundColor: '#1a1a1a',
-              borderRadius: '0 0 20px 20px',
-              zIndex: 10
-            }}
-          />
+          {/* Phone Notch - Only on desktop */}
+          {!isMobile && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '12px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '180px',
+                height: '32px',
+                backgroundColor: '#1a1a1a',
+                borderRadius: '0 0 20px 20px',
+                zIndex: 10
+              }}
+            />
+          )}
 
-          {/* Phone Screen */}
+          {/* Phone Screen / Mobile Screen */}
           <Box
-            sx={{
+            sx={!isMobile ? {
               width: '100%',
               height: '100%',
               minHeight: 'calc(100vh - 64px)',
               backgroundColor: '#000',
               borderRadius: '40px',
+              overflow: 'hidden',
+              position: 'relative'
+            } : {
+              width: '100%',
+              height: '100%',
+              minHeight: '100vh',
+              backgroundColor: '#000',
               overflow: 'hidden',
               position: 'relative'
             }}
@@ -491,8 +575,43 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
                   }}
                 >
         {/* Header */}
-        <Box sx={{ textAlign: 'center', py: 2 }}>
-          <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
+        <Box sx={{ width: '100%', position: 'relative', py: 2, px: 2 }}>
+          {/* Mode Selector - Top Left */}
+          <Box sx={{ position: 'absolute', top: 8, left: 8 }}>
+            <FormControl size="small">
+              <Select
+                value={orderingMode}
+                onChange={(e) => setOrderingMode(e.target.value as any)}
+                sx={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  borderRadius: 1.5,
+                  fontSize: '0.75rem',
+                  minWidth: '45px',
+                  '& .MuiSelect-select': {
+                    py: 0.5,
+                    px: 1,
+                    pr: '28px !important'
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    border: 'none'
+                  }
+                }}
+                renderValue={(value) => {
+                  // Show only emoji in the closed dropdown
+                  if (value === 'GUI') return '🤖';
+                  if (value === 'API-Wendys') return '🍔';
+                  if (value === 'API-McDonalds') return '🍟';
+                  return '🤖';
+                }}
+              >
+                <MenuItem value="GUI">🤖 GUI Mode</MenuItem>
+                <MenuItem value="API-Wendys">🍔 Wendy's API</MenuItem>
+                <MenuItem value="API-McDonalds">🍟 McDonald's API</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+
+          <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
             Fast Food Ordering Agent
           </Typography>
         </Box>
@@ -735,6 +854,57 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
           </Box>
         </Box>
       </Box>
+
+      {/* Text Input Modal */}
+      <Dialog
+        open={showTextModal}
+        onClose={handleCancelModal}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>What would you like to do?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
+            You clicked on the browser screen. Choose an action:
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            rows={3}
+            placeholder="Type text to enter (e.g., email, password, search query)..."
+            value={modalTextInput}
+            onChange={(e) => setModalTextInput(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && modalTextInput.trim()) {
+                e.preventDefault();
+                handleTypeText();
+              }
+            }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelModal} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleJustClick}
+            variant="outlined"
+            color="primary"
+          >
+            Just Click
+          </Button>
+          <Button
+            onClick={handleTypeText}
+            variant="contained"
+            color="primary"
+            disabled={!modalTextInput.trim()}
+          >
+            Click & Type Text
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
