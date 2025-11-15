@@ -56,13 +56,13 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                         self.lm += guidance_image("tmp.jpg") + \
                             self.configuration.tool_selection_user_prompt_format \
                                 .replace("{overall_goal}", overall_goal) \
-                                .replace("{subtask}", subtask) \
+                                .replace("{subtask}", str(subtask)) \
                                 .replace("{tool_options}", yaml.safe_dump(tool_options)) \
                                 .replace("{banned_tools}", str(banned_tools))
                     else:
                         self.lm += self.configuration.tool_selection_user_prompt_format \
                                 .replace("{overall_goal}", overall_goal) \
-                                .replace("{subtask}", subtask) \
+                                .replace("{subtask}", str(subtask)) \
                                 .replace("{tool_options}", yaml.safe_dump(tool_options)) \
                                 .replace("{banned_tools}", str(banned_tools))
                 name = None
@@ -89,7 +89,7 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                 tool_args_prompt = (self.configuration.tool_args_user_prompt_format + \
                     self.configuration.tool_specific_prompt_additions.get(name, "")) \
                     .replace("{overall_goal}", overall_goal) \
-                    .replace("{subtask}", subtask) \
+                    .replace("{subtask}", str(subtask)) \
                     .replace("{name}", name) \
                     .replace("{banned_tools}", str(banned_tools))
                 

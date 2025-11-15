@@ -38,6 +38,7 @@ class GeneralPlanner(BrowserActionPlanner):
         file_type = 'png'
         response = self.client.chat.completions.create(
             model="openai/models/ggml-model-Q4_K_M.gguf",
+            max_tokens=300,
             messages=[
                 {
                     "role": "user",
@@ -80,7 +81,7 @@ class GeneralPlanner(BrowserActionPlanner):
         )
         text_response = ""
         for chunk in response:
-            if chunk.choices[0].delta.content:
+            if len(chunk.choices) > 0 and chunk.choices[0].delta.content:
                 text = chunk.choices[0].delta.content
                 print(text, end="", flush=True)
                 text_response += text
@@ -105,7 +106,7 @@ class GeneralPlanner(BrowserActionPlanner):
                         'tool_call_result': history_message.get('tool_call_result'),
                     }, indent=2)}""",
                 },
-            ] for n, history_message in enumerate(history[::-1])]))
+            ] for n, history_message in enumerate(history.messages[::-1])]))
         else:
             return [
                 {
@@ -116,7 +117,7 @@ class GeneralPlanner(BrowserActionPlanner):
                         'tool_call': history_message.get('tool_call'),
                         'tool_call_result': history_message.get('tool_call_result'),
                     }, indent=2)}""",
-                } for n, history_message in enumerate(history[::-1])
+                } for n, history_message in enumerate(history.messages[::-1])
             ]
 
     def openai_spec_image_or_none_text(self, image: Optional[cv2.typing.MatLike], file_type='png'):
@@ -126,9 +127,9 @@ class GeneralPlanner(BrowserActionPlanner):
                 "text": "None"
             }
         else:
-            {
+            return {
                 "type": "image_url",
                 "image_url": {
-                    "url" f"data:image/{file_type};base64,{cv2_image_to_base64(image, f'.{file_type}')}"
-                },
+                    "url": f"data:image/{file_type};base64,{cv2_image_to_base64(image, f'.{file_type}')}"
+                }
             }
