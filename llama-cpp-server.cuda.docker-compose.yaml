@@ -1,6 +1,6 @@
 services:
   llama-cpp-server:
-    container_name: llama-cpp-server
+    container_name: llama-cpp-server-${INSTANCE_ID:-default}
     image: ghcr.io/ggml-org/llama.cpp:full-cuda
     entrypoint: [
       "/app/llama-server",
@@ -25,7 +25,7 @@ services:
     volumes:
       - ./models:/models
     ports:
-      - 8000:8080
+      - "${LLM_PORT:-8000}:8080"
     restart: always
     deploy:
       resources:
