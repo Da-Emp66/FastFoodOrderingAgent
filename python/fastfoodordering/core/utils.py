@@ -1,4 +1,5 @@
 import abc
+import asyncio
 import base64
 from dataclasses import dataclass
 import functools
@@ -12,6 +13,7 @@ import re
 import socket
 import sys
 from tempfile import NamedTemporaryFile
+import traceback
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import warnings
 import cv2
@@ -124,10 +126,13 @@ def populate_environment_specifications(spec: Union[str, Dict[str, Any]], **kwar
     else:
         return spec
 
+MESSAGE_SPECIAL_TOKEN_PATTERN = re.compile(r"\<(?:\\|\||\w|\_|\d)*\>")
 def extract_final_message_content(response: str):
     """Returns only the final response, with all proper thinking tokens and sections removed."""
-    return response.split("|>")[-1]
+    return re.split(MESSAGE_SPECIAL_TOKEN_PATTERN, response)[-1]
 
+def remove_special_characters(original_string: str) -> str:
+    return re.sub(r'[^A-Za-z0-9]', '', original_string)
 
 class BaseModelJSONEncoder(json.JSONEncoder):
     def default(self, obj: Any):
@@ -424,57 +429,68 @@ class ConstrainedToolCaller(ToolCaller):
             self.lm += self.configuration.tool_system_prompt \
                 .replace("{tool_options}", yaml.safe_dump(tool_options))
 
-    async def determine_tool(self, **kwargs) -> GeneratedTool:
-        tool_options = list(self.tools.keys())
-        with guidance_user():
-            user_prompt = self.configuration.tool_selection_user_prompt_format \
-                .replace("{tool_options}", yaml.safe_dump(tool_options))
-            for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
-            self.lm += user_prompt
-        name = None
-        with guidance_assistant():
-            self.lm += generate_constrained_json(name='tool_name_json', schema={
-                    'properties': {
-                        'tool_name': {
-                            'enum': list(self.tools.keys()),
-                            'title': 'Tool Name',
-                            'type': 'string'
-                        }
-                    },
-                    'required': ['tool_name'],
-                    'title': 'ToolName',
-                    'type': 'object',
-                },
-                temperature=self.configuration.tool_generation_params.temperature,
-                # logit_bias=logit_bias,
-            )
-            name = json.loads(self.lm["tool_name_json"])["tool_name"]
-        with guidance_user():
-            user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
-            for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
-            self.lm += user_prompt
-        with guidance_assistant():
-            if name in self.tools:
-                selected_tool = self.tools[name]
-                print(selected_tool.tool.inputSchema)
-                self.lm += generate_constrained_json(
-                    name="generated_args",
-                    schema=selected_tool.tool.inputSchema,
-                    temperature=self.configuration.tool_generation_params.temperature,
-                )
-                args = json.loads(self.lm["generated_args"])
-                selected_tool_representation = str({"tool": name, "args": args})
-                print(selected_tool_representation)
-            else:
-                raise ValueError(f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}")
-            
-            return GeneratedTool(
-                usable=selected_tool,
-                spec=GeneratedToolSpec(
-                    tool=name,
-                    args=args,
-                )
-            )
+    async def determine_tool(self, skip_args: bool = False, **kwargs) -> GeneratedTool:
+        success = False
+        while not success:
+            try:
+                tool_options = list(self.tools.keys())
+                with guidance_user():
+                    user_prompt = self.configuration.tool_selection_user_prompt_format \
+                        .replace("{tool_options}", yaml.safe_dump(tool_options))
+                    for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
+                    self.lm += user_prompt
+                name = None
+                with guidance_assistant():
+                    self.lm += generate_constrained_json(name='tool_name_json', schema={
+                            'properties': {
+                                'tool_name': {
+                                    'enum': list(self.tools.keys()),
+                                    'title': 'Tool Name',
+                                    'type': 'string'
+                                }
+                            },
+                            'required': ['tool_name'],
+                            'title': 'ToolName',
+                            'type': 'object',
+                        },
+                        temperature=self.configuration.tool_generation_params.temperature,
+                        # logit_bias=logit_bias,
+                    )
+                    name = json.loads(self.lm["tool_name_json"])["tool_name"]
+                    if skip_args and name in self.tools:
+                        return GeneratedTool(usable=self.tools[name], spec=GeneratedToolSpec(tool=name, args={}))
+                with guidance_user():
+                    user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
+                    for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
+                    self.lm += user_prompt
+                with guidance_assistant():
+                    if name in self.tools:
+                        selected_tool = self.tools[name]
+                        print(selected_tool.tool.inputSchema)
+                        self.lm += generate_constrained_json(
+                            name="generated_args",
+                            schema=selected_tool.tool.inputSchema,
+                            temperature=self.configuration.tool_generation_params.temperature,
+                        )
+                        args = json.loads(self.lm["generated_args"])
+                        selected_tool_representation = str({"tool": name, "args": args})
+                        print(selected_tool_representation)
+                    else:
+                        raise ValueError(f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}")
+                    
+                    return GeneratedTool(
+                        usable=selected_tool,
+                        spec=GeneratedToolSpec(
+                            tool=name,
+                            args=args,
+                        )
+                    )
+            except Exception as e:
+                print(traceback.format_exc())
+                print(f"Encountered exception when determining tool for constrained generation: {str(e)}")
+                print("Retrying in 5 seconds...")
+                asyncio.sleep(5)
+                print("Retrying...")
 
 class History(BaseModel):
     messages: List[Dict[str, Any]] = []

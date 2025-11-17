@@ -33,11 +33,7 @@ from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller, dspy_image_o
 from core.web.tool_calling.stagehand_tools import StageHandBrowserToolCaller
 from core.web.parser import FilterConfig, ParseRequest, ParseRequestConfiguration, ParserConfiguration, ParserDetails, ParserMode, get_item_by_label_number
 from core.web.planning.general_planner import GeneralPlanner
-
-class Plan(BaseModel):
-    plan: str
-
-IterativeTaskResult = Union[Plan, ToolReport, Literal['<|COMPLETED_OVERALL_TASK|>']]
+from core.web.agent_interface import Agent, IterativeTaskResult, Plan
 
 class StrategyRepeatedScreenshots(typing_extensions.TypedDict):
     delay_seconds: float
@@ -132,7 +128,7 @@ class BrowserAgentConfiguration(BaseModel):
     include_image_in_history: bool = False
     max_history_length: int = 5
 
-class BrowserAgentSystem:
+class BrowserAgentSystem(Agent):
     def __init__(self, configuration: Union[BrowserAgentConfiguration, Any]):
         self.configuration: BrowserAgentConfiguration = from_config(configuration, BrowserAgentConfiguration)
         match self.configuration.planner_type:

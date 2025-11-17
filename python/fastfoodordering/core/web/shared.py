@@ -5,9 +5,11 @@ from pathlib import Path
 
 from core.session.session import CompletionStatus, ObjectiveSpecification, Session, SessionCompletionStatus
 from core.web.agent import BrowserAgentSystem
+from core.web.agent_interface import Agent
+from core.web.simple_agent import SimpleBrowserAgent
 
-MAX_TASK_ITERATIONS = os.getenv("MAX_TASK_ITERATIONS", -1)
 # MAX_WEBSOCKET_FAILURES = os.getenv("MAX_WEBSOCKET_FAILURES", -1)
+MAX_TASK_ITERATIONS = os.getenv("MAX_TASK_ITERATIONS", -1)
 CURRENT_SCREENSHOT_PATH = os.getenv("CURRENT_SCREENSHOT_PATH", "/tmp/fast-food-custom-stagehand-server/tmp.jpg")
 CURRENT_IMAGE_PARSE_METADATA_PATH = os.getenv("CURRENT_IMAGE_PARSE_METADATA_PATH", "/tmp/fast-food-custom-stagehand-server/tmp.json")
 NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.getenv(
@@ -16,15 +18,34 @@ NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.getenv(
 )
 WEB_AGENT_CONFIG_PATH = os.getenv(
     "WEB_AGENT_CONFIG_PATH",
-    str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-custom-mcp.yaml")
+    None
 )
+BROWSER_AGENT_TYPE = os.getenv(
+    "BROWSER_AGENT_TYPE",
+    "default"
+)
+
+browser_agent = None
+if BROWSER_AGENT_TYPE.lower() == "simple":
+    if WEB_AGENT_CONFIG_PATH is None:
+        WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "simple-browser-agent.yaml")
+    print("Using BROWSER_AGENT_TYPE default = Instantiating SimpleBrowserAgent")
+    browser_agent = SimpleBrowserAgent()
+    print("SimpleBrowserAgent instantiated!")
+else:
+    if WEB_AGENT_CONFIG_PATH is None:
+        WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-simple-import.yaml")
+    print("Using BROWSER_AGENT_TYPE default = Instantiating BrowserAgentSystem")
+    browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
+    print("BrowserAgentSystem instantiated!")
+
 print(f"Using WEB_AGENT_CONFIG_PATH at {WEB_AGENT_CONFIG_PATH}")
 
 class SessionInProgress:
     original_spec: Session
     current_spec: Session
     status: SessionCompletionStatus
-    browser_agent: BrowserAgentSystem
+    browser_agent: Agent
 
     def __init__(
         self,
@@ -68,6 +89,6 @@ this_session = SessionInProgress(
         state=CompletionStatus.IN_PROGRESS,
         items_ordered=[],
     ),
-    browser_agent=BrowserAgentSystem(WEB_AGENT_CONFIG_PATH),
+    browser_agent=browser_agent,
 )
 print("SessionInProgress instantiated...")

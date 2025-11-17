@@ -5,8 +5,8 @@ tools:
       import_spec: core/web/toolserver.py
     - function_name: navigate
       import_spec: core/web/toolserver.py
-    - function_name: scroll
-      import_spec: core/web/toolserver.py
+    # - function_name: scroll
+    #   import_spec: core/web/toolserver.py
     - function_name: click_element_by_its_text_content
       import_spec: core/web/toolserver.py
     - function_name: click_element_by_box_label_number
@@ -51,3 +51,7 @@ browser_visibility_mode: ${BROWSER_VISIBILITY_MODE}
 parser:
   parser_uri: http://${PARSER_HOST}:${PARSER_PORT}
   parser_mode: ${PARSER_MODE}
+
+image_resize_configuration:
+  scale_x: 1.0
+  scale_y: 1.0

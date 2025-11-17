@@ -1,4 +1,5 @@
 
+import asyncio
 from itertools import chain
 import json
 import os
@@ -36,12 +37,13 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
 
     async def determine_tool(
         self,
-        overall_goal,
-        subtask,
-        previous_browser_screenshot = None,
-        current_browser_screenshot = None,
-        current_browser_snapshot = None,
-        banned_tools = None,
+        overall_goal: str,
+        subtask: str,
+        previous_browser_screenshot: Optional[cv2.typing.MatLike] = None,
+        current_browser_screenshot: Optional[cv2.typing.MatLike] = None,
+        current_browser_snapshot: Optional[str] = None,
+        banned_tools: Optional[str] = None,
+        skip_args: bool = False,
     ) -> GeneratedTool:
         success = False
         while not success:
@@ -85,6 +87,8 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                         # logit_bias=logit_bias,
                     )
                     name = json.loads(self.lm["tool_name_json"])["tool_name"]
+                    if skip_args and name in self.tools:
+                        return GeneratedTool(usable=self.tools[name], spec=GeneratedToolSpec(tool=name, args={}))
 
                 tool_args_prompt = (self.configuration.tool_args_user_prompt_format + \
                     self.configuration.tool_specific_prompt_additions.get(name, "")) \
@@ -121,6 +125,9 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
             except Exception as e:
                 print(traceback.format_exc())
                 print(f"Encountered exception when determining tool for constrained generation: {str(e)}")
+                print("Retrying in 5 seconds...")
+                asyncio.sleep(5)
+                print("Retrying...")
     
     async def screenshot(self) -> Optional[cv2.typing.MatLike]:
         screenshot_tool = self.tools.get(self.configuration.browser_visibility.screenshot_tool_name, None)

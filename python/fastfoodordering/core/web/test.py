@@ -24,6 +24,7 @@ if __name__ == "__main__":
         api_base=os.getenv("OPENAI_BASE_URL"),
         api_key="sk-1234",
         model_type="chat",
+        temperature=0.7,
     )
     dspy.settings.configure(lm=lm)
 

@@ -15,6 +15,16 @@ class DSPyPlanner(BrowserActionPlanner):
         previously completed steps and tool calls, and current browser state."""
 
         overall_goal: str = dspy.InputField(desc="The over-arching complex task to complete. ")
+        tools: list[dspy.Tool] = dspy.InputField(
+            desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language. "
+        )
+        history: dspy.History = dspy.InputField(
+            desc="Previous browser interactions, tool calls, and reasoning. " \
+            "THIS IS VERY IMPORTANT! PAY ATTENTION TO THIS FIELD AND DO NOT REPEAT ACTIONS THAT ARE NOT WORKING MORE THAN ONCE. " \
+            "IF THE BROWSER SCREEN DID NOT CHANGE AFTER A TOOL CALL, WHETHER OR NOT THE TOOL CALL RETURNED SUCCESS MEANS NOTHING. " \
+            "EITHER THAT WAS THE WRONG TOOL TO CHOOSE OR YOU GAVE IT THE WRONG ARGUMENTS. " \
+            "Try to reason and come up with a different solution if your original idea is not working. "
+        )
         previous_browser_screenshot: dspy.Image = dspy.InputField(
             desc="Image of what the browser looked like last time, before the last interaction. " \
             "(This, along with 'current_browser_screenshot' can help tell you if the last call " \
@@ -36,29 +46,24 @@ class DSPyPlanner(BrowserActionPlanner):
             desc="Snapshot containing refs to buttons and interactable divs in the current browser page "
         )
         reasoning: str = dspy.OutputField(
-            desc="This should never be 'None'. First describe what the browser looks like at the current time. " \
-            "Then evaluate if the previous tool call was successful based on if the screen changed at all. If the screen did not change at all, then the previous tool call was not the correct tool to call. " \
-            "Then, based on these thoughts, reason about what should be the 'next_task' based on the browser's state and the 'overall_goal'. " \
-            "If the previous tool call was not successful, give your thoughts as to why, and give details on what different to try next time in the 'next_task' field. "
+            desc="This should NEVER EVER be 'None', and it should NEVER EVER be empty. You should ALWAYS: " \
+            "1. First describe what the browser looks like at the current time.\n" \
+            "2. Then evaluate if the previous tool call was successful based on if the screen changed at all. If the screen did not change at all, then the previous tool call was not the correct tool to call, and you should not call that tool again.\n" \
+            "   If the previous tool call was not successful, give your thoughts as to why, and give details on what different to try next time in the 'next_subtask' field.\n" \
+            "3. Then, based on these thoughts, reason about what should be the 'next_subtask' based on the browser's state and the 'overall_goal'. " \
         )
         next_subtask: str = dspy.OutputField(
             desc="Instructions for what sub-task to do now to work towards the overall goal based on the " \
             f"current browser screen state, or, if the overall goal is complete, fill with {FINISH_TOKEN} in all caps. " \
-            "Make sure to describe this step in detail in human-readable natural language. This field should never be 'None'. " \
+            "Make sure to describe this step in detail in human-readable natural language. NOTE THAT THIS FIELD SHOULD NEVER EVER BE None, 'None', null or anything similar. It should always be your plan for the next action to perform. " \
             "Only reference buttons and items directly visible in the 'current_browser_screenshot'. If a required button is not directly visible, " \
-            "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click or typing a string into a text box. If the button or box is labeled by a number, ALWAYS include that number in your subtask description. " \
+            "the 'next_subtask' might be to scroll to find the button, or click on another button first. Each subtask should only involve a single click or typing a string into a text box. " \
+            "IF THE BUTTON OR BOX IS LABELED BY A NUMBER, ALWAYS INCLUDE THAT NUMBER IN YOUR SUBTASK DESCRIPTION. This is VERY IMPORTANT THAT YOU GET THE BOX NUMBER CORRECT. TAKE YOUR TIME TO READ THE BOX NUMBER CORRECTLY. " \
             "If another click is required, you should include that in the next subtask. " \
             "Note that on the very first step, this sub-task should be to navigate to the url. In that case, just specify the URL and say to navigate to it, not clicking anything. " \
             "NOTE: ALWAYS share your location with the browser. " \
             "NOTE: ALWAYS CLOSE POP-UPs FIRST before continuing on a screen. This is VERY IMPORTANT. " \
-        )
-        tools: list[dspy.Tool] = dspy.InputField(
-            desc="Tools available for use. Use these to help you better plan and describe the 'next_subtask' in natural language. "
-        )
-        history: dspy.History = dspy.InputField(
-            desc="Previous browser interactions, tool calls, and reasoning. " \
-            "PAY ATTENTION TO THIS FIELD AND DO NOT REPEAT ACTIONS THAT ARE NOT WORKING MORE THAN ONCE. " \
-            "Try to reason and come up with a different solution if your original idea is not working. "
+            "NOTE: DO NOT REPEATEDLY TRY TO CLICK THE SAME BOX AS BEFORE IF THE PREVIOUS SCREENSHOT IS THE SAME AS THE CURRENT SCREENSHOT. THAT IS LIKELY THE WRONG BOUNDING BOX. "
         )
 
     def __init__(self, configuration: Union[Dict[str, Any], PlannerConfiguration]):

@@ -1,0 +1,6 @@
+task_prompt_template: |
+  Task: `{overall_goal}`
+  Rules:
+    - Stop and return done when you reach the payment screen.
+      Don't fill out my payment information and don't actually order the food, but do add everything to the order and get to the payment screen.
+      You are allowed to fill in all text fields except for those directly on the payment screen, which you are not allowed to fill in.

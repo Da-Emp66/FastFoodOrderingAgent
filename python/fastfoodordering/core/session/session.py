@@ -6,7 +6,8 @@ import os
 from pathlib import Path
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
+import uuid
 
 import cv2
 import litellm
@@ -19,6 +20,7 @@ from core.utils import (
     extract_final_message_content,
     from_config,
     populate_environment_specifications,
+    remove_special_characters,
 )
 from core.web.tool_calling.interface import ToolModes
 
@@ -33,11 +35,14 @@ class BrowserGeoLocation(BaseModel):
     accuracy: float
     """A measure of how accurate the (latitude, longitude) coordinate is, in meters."""
 
+DEFAULT_UI_UUID = uuid.uuid4()
 class SessionManagerPrompt(BaseModel):
     user: str
     """Username, user ID, or email."""
     prompt: str
     """The user's query, question, or request. Will be sent to the SessionManager to decide what to do."""
+    ui_id: str = DEFAULT_UI_UUID
+    """Randomly generated ID by the UI. Defaults to a UUID for the class, but needs to be provided by the UI if the user is to be able to have multiple sessions."""
     session_id: Optional[str] = None
     """If the user has a session open and this query is for updating that session, pass the session_id returned when you first created the session."""
     current_geolocation: Optional[BrowserGeoLocation] = None
@@ -59,9 +64,16 @@ class FoodOrDrinkItem(BaseModel):
     official_name: str
     special_instructions: Optional[str] = None
 
+class OrderDetails(BaseModel):
+    restaurant_name: Optional[str] = None
+    order: Optional[List[FoodOrDrinkItem]] = None
+    pickup_or_delivery: Optional[Literal['pickup', 'delivery']] = None
+    restaurant_location: Optional[str] = None
+    delivery_address: Optional[str] = None
+
 class ObjectiveSpecification(BaseModel):
     objective: str = Field(alias="objective")
-    order: List[FoodOrDrinkItem] = []
+    extracted_order_details: OrderDetails = OrderDetails()
 
 class Session(BaseModel):
     user: str
@@ -98,10 +110,19 @@ class SessionManager:
         
         # Outer key is user, inner key is session_id
         self.sessions: Dict[str, Dict[str, Session]] = {}
+        # Outer key is user, inner key is UI's ID
+        self.order_details: Dict[str, Dict[str, OrderDetails]] = {}
     
     async def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+        from core.session.session_tools import (
+            cancel_session,
+            start_session,
+            update_session,
+        )
+
         session_id = None
         await self.tool_caller.initialize_tools()
+    
         # Determine what to do and inform the user
         response = litellm.completion(
             os.getenv("MODEL"),
@@ -114,7 +135,8 @@ class SessionManager:
             max_tokens=self.configuration.response.max_tokens,
         ).choices[0].message.content
         response = extract_final_message_content(response)
-        # Determine and call the tool
+
+        # Determine the tool
         try:
             generated_tool = await self.tool_caller.determine_tool(
                 user=prompt.user,
@@ -122,19 +144,77 @@ class SessionManager:
                 response=response,
                 session_id=prompt.session_id,
                 current_geolocation=prompt.current_geolocation,
+                skip_args=True,
             )
         except Exception as e:
             generated_tool = None
-            result = f"Failed to call tool: {e}"
+            result = f"Failed to determine tool: {e}"
             print(result)
         
         if generated_tool is not None:
-            try:
-                result = await self.tool_caller.call_tool(generated_tool)
-                session_id = json.loads(result).get("session_id", None)
-            except Exception as e:
-                result = f"Failed to call tool {generated_tool.spec}: {e}"
-                print(result)
+
+            # # TODO: Validate order details before starting and/or updating the session
+            # if generated_tool.spec.tool == "start_session" \
+            #     or generated_tool.spec.tool == "update_session":
+            #     ui_id = (prompt.ui_id or DEFAULT_UI_UUID)
+            #     current_known_order_details = self.order_details.get(prompt.user, {}).get(ui_id, None)
+            #     current_known_order_details = self.extract_order_details(
+            #         prompt=prompt.prompt,
+            #         current_known_order_details=current_known_order_details,
+            #     )
+            #     self.order_details[prompt.user][ui_id] = current_known_order_details
+            #     if current_known_order_details.is_incomplete():
+            #         # TODO: Query for more information
+            #         return SessionManagerChatResult(
+            #             response=response,
+            #         )
+
+            if generated_tool.spec.tool == "start_session":
+                if prompt.session_id is not None:
+                    generated_tool.spec.tool = "update_session"
+                    result = await update_session(
+                        user=prompt.user,
+                        session_id=prompt.session_id,
+                        updated_objective_spec=ObjectiveSpecification(
+                            objective=prompt.prompt,
+                        )
+                    )
+                else:
+                    result = await start_session(
+                        exact_user_query=prompt.prompt,
+                        user=prompt.user,
+                        current_geolocation=prompt.current_geolocation,
+                    )
+            elif generated_tool.spec.tool == "update_session":
+                if prompt.session_id is None:
+                    generated_tool.spec.tool = "start_session"
+                    result = await start_session(
+                        exact_user_query=prompt.prompt,
+                        user=prompt.user,
+                        current_geolocation=prompt.current_geolocation,
+                    )
+                else:
+                    result = await update_session(
+                        user=prompt.user,
+                        session_id=prompt.session_id,
+                        updated_objective_spec=ObjectiveSpecification(
+                            objective=prompt.prompt,
+                        )
+                    )
+            elif generated_tool.spec.tool == "cancel_session":
+                result = await cancel_session(
+                    user=prompt.user,
+                    session_id=prompt.session_id,
+                )
+            else:
+                result = "No function called."
+            
+            if generated_tool.spec.tool == "start_session":
+                try:
+                    session_id = json.loads(result).get("session_id", None)
+                except Exception as e:
+                    result = f"Failed to call tool {generated_tool.spec}: {e}"
+                    print(result)
 
         return SessionManagerChatResult(
             response=response,
@@ -142,9 +222,10 @@ class SessionManager:
         )
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
+        user_without_special_characters = remove_special_characters(user)
         container_spec = populate_environment_specifications(
             self.configuration.web_agent_spec,
-            _DYN_WEB_AGENT_USER=user,
+            _DYN_WEB_AGENT_USER=user_without_special_characters,
             _DYN_WEB_AGENT_SESSION_ID=session_id,
         )
         session_url = f"ws://{container_spec['name']}:9000/active-session/view" # TODO: Don't hardcode this port
@@ -199,9 +280,12 @@ class SessionManager:
     #         return cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH)
     #     return session.web_agent.screenshot or cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH)
 
-    async def create_session(user: str, session_id: str, objective: str):
+    async def create_session(self, user: str, session_id: str, objective: str):
         raise NotImplementedError()
+        # return await start_session(objective, user, )
 
-    async def update_session(user: str, session_id: str, objective: str):
+    async def update_session(self, user: str, session_id: str, objective: str):
         raise NotImplementedError()
     
+    async def validate_order_details(self):
+        pass

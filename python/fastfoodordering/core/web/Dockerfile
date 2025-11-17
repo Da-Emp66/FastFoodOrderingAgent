@@ -35,8 +35,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project --no-dev
-RUN uv run playwright install
-ENV PLAYWRIGHT_BROWSERS_PATH="/root/.cache/ms-playwright"
+ENV PLAYWRIGHT_BROWSERS_PATH="/opt/playwright"
+RUN PLAYWRIGHT_BROWSERS_PATH="/opt/playwright" uv run playwright install && \
+    ln -s /opt/playwright/chromium-*/chrome-linux/chrome /usr/bin/chromium-browser && \
+    chmod -R 755 /opt/playwright
 COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
