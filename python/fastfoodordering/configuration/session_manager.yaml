@@ -65,9 +65,13 @@ web_agent_spec:
   image: ${WEB_AGENT_IMAGE:-web-agent}:${WEB_AGENT_TAG:-latest}
   name: ${_DYN_WEB_AGENT_USER}-session-${_DYN_WEB_AGENT_SESSION_ID}
   # command: ${WEB_AGENT_COMMAND:-bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & sleep 1 && uv run core/web/serve.py}
-  volumes:
-    - "/home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}"
+  # volumes:
+  #   - "/home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}"
 
+  # Note: Configuration files are already included in the Docker image via COPY . /app
+  # If you need to override config during development, uncomment and adjust the volume mount below:
+  volumes:
+    - "${PWD}/python/fastfoodordering/configuration:/app/configuration:ro"
 
 # ports:
 #   - "${_DYN_WEB_AGENT_PORT:-9000}:${_DYN_WEB_AGENT_PORT:-9000}"

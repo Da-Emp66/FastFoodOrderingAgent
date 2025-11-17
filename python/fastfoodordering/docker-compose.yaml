@@ -10,6 +10,10 @@ services:
       - OPENAI_BASE_URL=http://host.docker.internal:${LLM_PORT:-8000}
       - DOCKER_HOST=unix:///var/run/docker.sock
       - BROWSER_VISIBILITY_MODE=default
+      - DOCKER_NETWORK_NAME=${DOCKER_NETWORK_NAME:-fast-food}
+      - PARSER_MODE=${PARSER_MODE:-disabled}
+      - PARSER_HOST=${PARSER_HOST:-localhost}
+      - PARSER_PORT=${PARSER_PORT:-8055}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Remove external port exposure - only accessible through nginx with auth

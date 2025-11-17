@@ -1,6 +1,5 @@
-import json
 import os
-from typing import Union
+from typing import Optional, Union
 from uuid import uuid4
 
 import requests
@@ -15,9 +14,8 @@ WEB_AGENT_TAG = os.getenv("WEB_AGENT_TAG", "latest")
 async def start_session(
     exact_user_query: str,
     user: str,
-    current_geolocation: BrowserGeoLocation,
+    current_geolocation: Optional[BrowserGeoLocation] = None,
 ) -> Union[str, "SessionManagerToolCallResult"]:
-    # user = user.replace("{", "").replace("}", "")
     user_without_special_characters = remove_special_characters(user)
     session_id = str(uuid4())
     container_environment_vars = os.environ.copy()
@@ -36,7 +34,6 @@ async def start_session(
         "SESSION_OBJECTIVE": exact_user_query,
         "BROWSER_GEOLOCATION": current_geolocation.model_dump_json(),
         # "BROWSER_AGENT_TYPE": ,
-        # "PLAYWRIGHT_BROWSERS_PATH": "/root/.cache/ms-playwright",
     })
     web_agent_environment_spec = populate_environment_specifications(
         shared.session_manager.configuration.web_agent_spec,
@@ -91,10 +88,17 @@ async def cancel_session(
     user: str,
     session_id: str,
 ) -> Union[str, "SessionManagerToolCallResult"]:
-    # container_name = populate_environment_specifications(shared.session_manager.configuration.web_agent_spec["name"])
-    # container = shared.docker_client.containers.get(container_name)
+    
+    user_without_special_characters = remove_special_characters(user)
+    container_name = populate_environment_specifications(
+        shared.session_manager.configuration.web_agent_spec["name"],
+        _DYN_WEB_AGENT_USER=user_without_special_characters,
+        _DYN_WEB_AGENT_SESSION_ID=session_id,
+    )
+    container = shared.docker_client.containers.get(container_name)
     # OR
-    container = shared.session_ids_to_containers.get(session_id)
+    # container = shared.session_ids_to_containers.get(session_id)
+
     if container is None:
         return SessionManagerToolCallResult(result=f"Failed to cancel session!!! Session with ID {session_id} for user {user} does not exist.").model_dump_json()
     container_id = container.id

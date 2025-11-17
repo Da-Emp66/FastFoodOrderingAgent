@@ -90,6 +90,11 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
     };
     setMessages(prev => [...prev, userMessage]);
 
+    // Debug: log geolocation
+    console.log('[DEBUG] Sending request with geolocation:', geolocation);
+    console.log('[DEBUG] Geolocation error:', geoError);
+    console.log('[DEBUG] Geolocation loading:', geoLoading);
+
     // Send to backend
     setIsLoadingResponse(true);
     try {
@@ -130,15 +135,16 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
     }
   };
 
-  // Handle initial query - only run once when component mounts
+  // Handle initial query - wait for geolocation to load first
   const hasProcessedInitialQuery = useRef(false);
   useEffect(() => {
-    if (initialQuery && !hasProcessedInitialQuery.current) {
+    // Only send the initial query once geolocation has finished loading (or failed)
+    if (initialQuery && !hasProcessedInitialQuery.current && !geoLoading) {
       hasProcessedInitialQuery.current = true;
       handleSendMessage(initialQuery);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [geoLoading]); // Re-run when geoLoading changes
 
   const startListening = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {

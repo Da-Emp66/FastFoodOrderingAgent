@@ -26,7 +26,7 @@ from core.session.session import (
     SessionManagerChatResult,
     SessionManagerPrompt,
 )
-from core.utils import populate_environment_specifications
+from core.utils import populate_environment_specifications, sanitize_container_name
 
 # Load environment variables
 dotenv_to_use = find_dotenv()
@@ -90,6 +90,7 @@ def chat(prompt: SimplePrompt) -> SimpleResponse:
 
 @app.post("/{user}/sessions/chat")
 async def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+    print(f"[DEBUG] Received chat request - User: {prompt.user}, Session: {prompt.session_id}, Geolocation: {prompt.current_geolocation}")
     return await shared.session_manager(prompt)
 
 @app.get("/{user}/sessions")
@@ -135,9 +136,10 @@ async def handle_browser_click(user: str, session_id: str, coordinates: BrowserC
     """Forward a user click to the web agent container."""
     try:
         # Get the container name for this session
+        sanitized_user = sanitize_container_name(user)
         container_spec = populate_environment_specifications(
             shared.session_manager.configuration.web_agent_spec,
-            _DYN_WEB_AGENT_USER=user,
+            _DYN_WEB_AGENT_USER=sanitized_user,
             _DYN_WEB_AGENT_SESSION_ID=session_id,
         )
         container_url = f"http://{container_spec['name']}:9000/active-session/click"
@@ -174,9 +176,10 @@ async def handle_browser_type(user: str, session_id: str, text_input: BrowserTex
     """Forward user text input to the web agent container."""
     try:
         # Get the container name for this session
+        sanitized_user = sanitize_container_name(user)
         container_spec = populate_environment_specifications(
             shared.session_manager.configuration.web_agent_spec,
-            _DYN_WEB_AGENT_USER=user,
+            _DYN_WEB_AGENT_USER=sanitized_user,
             _DYN_WEB_AGENT_SESSION_ID=session_id,
         )
         container_url = f"http://{container_spec['name']}:9000/active-session/type"
@@ -207,27 +210,6 @@ async def handle_browser_type(user: str, session_id: str, text_input: BrowserTex
             status_code=500,
             detail=f"Error forwarding text input: {str(e)}"
         )
-
-@app.post("/{user}/release")
-def release_instance(user: str):
-    """Manually release the instance lock for a user"""
-    if shared.session_manager.active_user == user:
-        shared.session_manager.active_user = None
-        shared.session_manager.last_activity = None
-        return {"message": "Instance lock released successfully"}
-    elif shared.session_manager.active_user is None:
-        return {"message": "Instance is not locked"}
-    else:
-        return {"error": "You don't have the lock", "locked_by": shared.session_manager.active_user}
-
-@app.get("/instance/status")
-def instance_status():
-    """Check the current lock status of the instance"""
-    return {
-        "locked": shared.session_manager.active_user is not None,
-        "active_user": shared.session_manager.active_user,
-        "last_activity": shared.session_manager.last_activity
-    }
 
 def on_exit():
     print("Performing exit sequence...")

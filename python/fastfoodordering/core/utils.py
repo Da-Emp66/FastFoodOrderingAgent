@@ -134,6 +134,26 @@ def extract_final_message_content(response: str):
 def remove_special_characters(original_string: str) -> str:
     return re.sub(r'[^A-Za-z0-9]', '', original_string)
 
+def sanitize_container_name(name: str) -> str:
+    """
+    Sanitize a string to make it a valid Docker container name.
+    Docker container names must match the pattern: [a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    This function:
+    - Replaces @ and other invalid characters with hyphens
+    - Ensures the name starts with alphanumeric character
+    - Preserves only valid characters: letters, numbers, underscores, dots, and hyphens
+    """
+    # Replace @ and other invalid characters with hyphens
+    sanitized = re.sub(r'[^a-zA-Z0-9_.-]', '-', name)
+    
+    # Ensure it starts with alphanumeric character
+    if sanitized and not sanitized[0].isalnum():
+        sanitized = 'c' + sanitized
+    
+    return sanitized
+
+
 class BaseModelJSONEncoder(json.JSONEncoder):
     def default(self, obj: Any):
         if isinstance(obj, BaseModel):
@@ -175,7 +195,7 @@ class McpToolFunctionWrapper:
 
 async def null_function():
     """The function that gets called when the model chooses not to call a function."""
-    return
+    return "{}"
 
 def find_or_return_function(function_spec: LocalToolSpec):
     if type(function_spec) == str:
@@ -437,7 +457,7 @@ class ConstrainedToolCaller(ToolCaller):
                 with guidance_user():
                     user_prompt = self.configuration.tool_selection_user_prompt_format \
                         .replace("{tool_options}", yaml.safe_dump(tool_options))
-                    for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
+                    user_prompt = self.format_prompt_string_with_arguments(user_prompt, kwargs)
                     self.lm += user_prompt
                 name = None
                 with guidance_assistant():
@@ -461,7 +481,7 @@ class ConstrainedToolCaller(ToolCaller):
                         return GeneratedTool(usable=self.tools[name], spec=GeneratedToolSpec(tool=name, args={}))
                 with guidance_user():
                     user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
-                    for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
+                    user_prompt = self.format_prompt_string_with_arguments(user_prompt, kwargs)
                     self.lm += user_prompt
                 with guidance_assistant():
                     if name in self.tools:
@@ -491,6 +511,18 @@ class ConstrainedToolCaller(ToolCaller):
                 print("Retrying in 5 seconds...")
                 asyncio.sleep(5)
                 print("Retrying...")
+    
+    def format_prompt_string_with_arguments(self, prompt: str, kwargs: Dict[str, Any]):
+        for key, val in kwargs.items(): 
+            # Convert value to string, handling Pydantic models and None specially
+            if val is None:
+                val_str = "null"
+            elif isinstance(val, BaseModel):
+                val_str = val.model_dump_json()
+            else:
+                val_str = str(val)
+            prompt = prompt.replace(f"{{{key}}}", val_str)
+        return prompt
 
 class History(BaseModel):
     messages: List[Dict[str, Any]] = []
