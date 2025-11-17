@@ -90,6 +90,7 @@ def chat(prompt: SimplePrompt) -> SimpleResponse:
 
 @app.post("/{user}/sessions/chat")
 async def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerChatResult:
+    print(f"[DEBUG] Received chat request - User: {prompt.user}, Session: {prompt.session_id}, Geolocation: {prompt.current_geolocation}")
     return await shared.session_manager(prompt)
 
 @app.get("/{user}/sessions")

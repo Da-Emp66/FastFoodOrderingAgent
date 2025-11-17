@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Union
+from typing import Optional, Union
 from uuid import uuid4
 
 import requests
@@ -15,7 +15,7 @@ WEB_AGENT_TAG = os.getenv("WEB_AGENT_TAG", "latest")
 async def start_session(
     order: str,
     user: str,
-    current_geolocation: BrowserGeoLocation,
+    current_geolocation: Optional[BrowserGeoLocation] = None,
 ) -> Union[str, "SessionManagerToolCallResult"]:
     user = user.replace("{", "").replace("}", "") # STRONG TODO: LLM should not generate user, current_geolocation
     session_id = str(uuid4())
@@ -31,15 +31,22 @@ async def start_session(
         replacements[key] = val
     container_environment_vars.update(replacements)
     
-    container_environment_vars.update({
+    # Prepare environment variables for the web agent container
+    env_updates = {
         "_DYN_WEB_AGENT_USER": sanitized_user,
         "_DYN_WEB_AGENT_SESSION_ID": session_id,
         "SESSION_USER": user,
         "SESSION_ID": session_id,
         "SESSION_OBJECTIVE": order,
-        "BROWSER_GEOLOCATION": json.dumps(current_geolocation),
         "PLAYWRIGHT_BROWSERS_PATH": "/root/.cache/ms-playwright",
-    })
+    }
+    
+    # Only set BROWSER_GEOLOCATION if we have valid geolocation data
+    if current_geolocation:
+        env_updates["BROWSER_GEOLOCATION"] = json.dumps(current_geolocation.model_dump())
+    
+    container_environment_vars.update(env_updates)
+    
     web_agent_environment_spec = populate_environment_specifications(
         shared.session_manager.configuration.web_agent_spec,
         _DYN_WEB_AGENT_USER=sanitized_user,

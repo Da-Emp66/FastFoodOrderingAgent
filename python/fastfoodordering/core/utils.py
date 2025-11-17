@@ -431,8 +431,10 @@ class ConstrainedToolCaller(ToolCaller):
             user_prompt = self.configuration.tool_selection_user_prompt_format \
                 .replace("{tool_options}", yaml.safe_dump(tool_options))
             for key, val in kwargs.items(): 
-                # Convert value to string, handling Pydantic models specially
-                if hasattr(val, 'model_dump'):
+                # Convert value to string, handling Pydantic models and None specially
+                if val is None:
+                    val_str = "null"
+                elif hasattr(val, 'model_dump'):
                     val_str = json.dumps(val.model_dump())
                 else:
                     val_str = str(val)
@@ -459,8 +461,10 @@ class ConstrainedToolCaller(ToolCaller):
         with guidance_user():
             user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
             for key, val in kwargs.items(): 
-                # Convert value to string, handling Pydantic models specially
-                if hasattr(val, 'model_dump'):
+                # Convert value to string, handling Pydantic models and None specially
+                if val is None:
+                    val_str = "null"
+                elif hasattr(val, 'model_dump'):
                     val_str = json.dumps(val.model_dump())
                 else:
                     val_str = str(val)
