@@ -127,6 +127,7 @@ class SessionManager:
         ).choices[0].message.content
         response = extract_final_message_content(response)
         # Determine and call the tool
+        session_id = None
         try:
             generated_tool = await self.tool_caller.determine_tool(
                 user=prompt.user,
@@ -143,7 +144,11 @@ class SessionManager:
         if generated_tool is not None:
             try:
                 result = await self.tool_caller.call_tool(generated_tool)
-                session_id = json.loads(result).get("session_id", None)
+                parsed_result = json.loads(result)
+                session_id = parsed_result.get("session_id", None)
+            except json.JSONDecodeError as e:
+                result = f"Failed to parse tool result as JSON {generated_tool.spec}: {e}"
+                print(result)
             except Exception as e:
                 result = f"Failed to call tool {generated_tool.spec}: {e}"
                 print(result)

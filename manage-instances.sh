@@ -84,6 +84,26 @@ restart_instance() {
     echo "Instance $instance_num restarted! ($(get_instance_info $instance_num))"
 }
 
+# Function to rebuild and restart a single instance
+rebuild_instance() {
+    local instance_num=$1
+    echo "Rebuilding Instance $instance_num..."
+    docker compose -p fastfood-instance-${instance_num} --env-file .env.instance${instance_num} down
+    docker compose -p fastfood-instance-${instance_num} --env-file .env.instance${instance_num} build --no-cache
+    docker compose -p fastfood-instance-${instance_num} --env-file .env.instance${instance_num} up -d
+    echo "Instance $instance_num rebuilt and started! ($(get_instance_info $instance_num))"
+}
+
+# Function to rebuild without cache and restart a single instance
+rebuild_no_cache_instance() {
+    local instance_num=$1
+    echo "Rebuilding Instance $instance_num (no cache)..."
+    docker compose -p fastfood-instance-${instance_num} --env-file .env.instance${instance_num} down
+    docker compose -p fastfood-instance-${instance_num} --env-file .env.instance${instance_num} build --no-cache --pull
+    docker compose -p fastfood-instance-${instance_num} --env-file .env.instance${instance_num} up -d
+    echo "Instance $instance_num rebuilt (no cache) and started! ($(get_instance_info $instance_num))"
+}
+
 # Function to show status
 show_status() {
     local instances=$(get_instances)
@@ -158,6 +178,30 @@ case "$1" in
         done
         echo "All instances restarted!"
         ;;
+    rebuild-all)
+        echo "Rebuilding all instances..."
+        instances=$(get_instances)
+        if [ -z "$instances" ]; then
+            echo "No instances configured!"
+            exit 1
+        fi
+        for instance_num in $instances; do
+            rebuild_instance $instance_num
+        done
+        echo "All instances rebuilt!"
+        ;;
+    rebuild-no-cache-all)
+        echo "Rebuilding all instances (no cache)..."
+        instances=$(get_instances)
+        if [ -z "$instances" ]; then
+            echo "No instances configured!"
+            exit 1
+        fi
+        for instance_num in $instances; do
+            rebuild_no_cache_instance $instance_num
+        done
+        echo "All instances rebuilt (no cache)!"
+        ;;
     start-*)
         instance_num=${1#start-}
         if [ -f ".env.instance${instance_num}" ]; then
@@ -191,6 +235,28 @@ case "$1" in
             exit 1
         fi
         ;;
+    rebuild-*)
+        instance_num=${1#rebuild-}
+        if [ -f ".env.instance${instance_num}" ]; then
+            rebuild_instance $instance_num
+        else
+            echo "Error: .env.instance${instance_num} not found!"
+            echo ""
+            list_instances
+            exit 1
+        fi
+        ;;
+    rebuild-no-cache-*)
+        instance_num=${1#rebuild-no-cache-}
+        if [ -f ".env.instance${instance_num}" ]; then
+            rebuild_no_cache_instance $instance_num
+        else
+            echo "Error: .env.instance${instance_num} not found!"
+            echo ""
+            list_instances
+            exit 1
+        fi
+        ;;
     status)
         show_status
         ;;
@@ -198,17 +264,26 @@ case "$1" in
         list_instances
         ;;
     *)
-        echo "Usage: $0 {start-<N>|stop-<N>|restart-<N>|start-all|stop-all|restart-all|status|list}"
+        echo "Usage: $0 {start-<N>|stop-<N>|restart-<N>|rebuild-<N>|rebuild-no-cache-<N>|start-all|stop-all|restart-all|rebuild-all|rebuild-no-cache-all|status|list}"
         echo ""
         echo "Commands:"
-        echo "  start-<N>    - Start instance N (e.g., start-1, start-2, start-3)"
-        echo "  stop-<N>     - Stop instance N"
-        echo "  restart-<N>  - Restart instance N"
-        echo "  start-all    - Start all configured instances"
-        echo "  stop-all     - Stop all configured instances"
-        echo "  restart-all  - Restart all configured instances"
-        echo "  status       - Show status of all instances"
-        echo "  list         - List all configured instances"
+        echo "  start-<N>             - Start instance N (e.g., start-1, start-2, start-3)"
+        echo "  stop-<N>              - Stop instance N"
+        echo "  restart-<N>           - Restart instance N (no rebuild)"
+        echo "  rebuild-<N>           - Rebuild and restart instance N (uses cache)"
+        echo "  rebuild-no-cache-<N>  - Rebuild instance N from scratch (no cache, pulls fresh base images)"
+        echo "  start-all             - Start all configured instances"
+        echo "  stop-all              - Stop all configured instances"
+        echo "  restart-all           - Restart all configured instances (no rebuild)"
+        echo "  rebuild-all           - Rebuild and restart all instances (uses cache)"
+        echo "  rebuild-no-cache-all  - Rebuild all instances from scratch (no cache)"
+        echo "  status                - Show status of all instances"
+        echo "  list                  - List all configured instances"
+        echo ""
+        echo "Quick guide:"
+        echo "  - Code changes? Use: rebuild-all or rebuild-<N>"
+        echo "  - Major issues? Use: rebuild-no-cache-all or rebuild-no-cache-<N>"
+        echo "  - Just restart? Use: restart-all or restart-<N>"
         echo ""
         echo "To add a new instance:"
         echo "  1. Copy .env.instance1 to .env.instance3 (or any number)"

@@ -181,7 +181,7 @@ class McpToolFunctionWrapper:
 
 async def null_function():
     """The function that gets called when the model chooses not to call a function."""
-    return
+    return "{}"
 
 def find_or_return_function(function_spec: LocalToolSpec):
     if type(function_spec) == str:
@@ -430,7 +430,13 @@ class ConstrainedToolCaller(ToolCaller):
         with guidance_user():
             user_prompt = self.configuration.tool_selection_user_prompt_format \
                 .replace("{tool_options}", yaml.safe_dump(tool_options))
-            for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
+            for key, val in kwargs.items(): 
+                # Convert value to string, handling Pydantic models specially
+                if hasattr(val, 'model_dump'):
+                    val_str = json.dumps(val.model_dump())
+                else:
+                    val_str = str(val)
+                user_prompt = user_prompt.replace(f"{{{key}}}", val_str)
             self.lm += user_prompt
         name = None
         with guidance_assistant():
@@ -452,7 +458,13 @@ class ConstrainedToolCaller(ToolCaller):
             name = json.loads(self.lm["tool_name_json"])["tool_name"]
         with guidance_user():
             user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
-            for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
+            for key, val in kwargs.items(): 
+                # Convert value to string, handling Pydantic models specially
+                if hasattr(val, 'model_dump'):
+                    val_str = json.dumps(val.model_dump())
+                else:
+                    val_str = str(val)
+                user_prompt = user_prompt.replace(f"{{{key}}}", val_str)
             self.lm += user_prompt
         with guidance_assistant():
             if name in self.tools:
