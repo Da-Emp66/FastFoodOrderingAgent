@@ -1,4 +1,4 @@
-FROM nvidia/cuda:13.0.2-base-ubuntu22.04
+FROM nvidia/cuda:12.4.0-base-ubuntu22.04
 USER root
 # RUN apt-get update && apt-get install libgl1 libglib2.0-0 -y && apt-get clean
 RUN apt-get update && \
