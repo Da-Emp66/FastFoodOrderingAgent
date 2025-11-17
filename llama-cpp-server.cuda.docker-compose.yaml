@@ -20,7 +20,7 @@ services:
     # ]
     environment:
       LLAMA_ARG_N_PREDICT: 4000
-      LLAMA_ARG_CTX_SIZE: 10000
+      LLAMA_ARG_CTX_SIZE: 32768
       LLAMA_ARG_N_GPU_LAYERS: -1
     volumes:
       - ./models:/models

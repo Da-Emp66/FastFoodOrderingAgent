@@ -213,12 +213,17 @@ class SessionManager:
             _DYN_WEB_AGENT_SESSION_ID=session_id,
         )
         session_url = f"ws://{container_spec['name']}:9000/active-session/view" # TODO: Don't hardcode this port
-        print(f"Connecting to `{session_url}`...")
+        retry_count = 0
+        max_retries = int(os.getenv("BROWSER_SCREENSHOT_MAX_RETRIES", "-1"))  # -1 means infinite
+        
+        BACKEND_LOGGER.info(f"[Session {session_id}] Initializing WebSocket connection to {session_url}")
 
-        while True:
+        while max_retries == -1 or retry_count < max_retries:
             try:
+                BACKEND_LOGGER.info(f"[Session {session_id}] Attempting WebSocket connection (attempt #{retry_count + 1})...")
                 async with websockets.connect(session_url, open_timeout=10.0) as websocket:
-                    print(f"Connected to {session_url}")
+                    BACKEND_LOGGER.info(f"[Session {session_id}] ✅ Successfully connected to {session_url}")
+                    retry_count = 0  # Reset retry count on successful connection
 
                     while True:
                         try:
@@ -240,20 +245,33 @@ class SessionManager:
                             )
 
                         except asyncio.TimeoutError:
-                            print(f"Timeout waiting for frame from {session_url}")
+                            BACKEND_LOGGER.warning(f"[Session {session_id}] Timeout waiting for frame from {session_url}, reconnecting...")
                             break  # reconnect
 
                         except websockets.ConnectionClosed:
-                            print(f"WebSocket closed, reconnecting to {session_url}")
+                            BACKEND_LOGGER.warning(f"[Session {session_id}] WebSocket closed, reconnecting to {session_url}")
                             break
 
                         await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.1")))
 
             except Exception as e:
-                BACKEND_LOGGER.error(f"Error in screenshot generator: {e}\n{traceback.format_exc()}")
+                retry_count += 1
+                error_type = type(e).__name__
+                if "ConnectionRefusedError" in error_type or "111" in str(e):
+                    BACKEND_LOGGER.warning(
+                        f"[Session {session_id}] ⏳ WebSocket not ready yet (attempt #{retry_count}). "
+                        f"Container may still be starting up. Retrying in 5s..."
+                    )
+                else:
+                    BACKEND_LOGGER.error(
+                        f"[Session {session_id}] ❌ WebSocket error (attempt #{retry_count}): {error_type}: {e}\n"
+                        f"{traceback.format_exc()}"
+                    )
 
             finally:
-                BACKEND_LOGGER.info(f"Closing {user} websocket connection to session {session_id}")
+                if max_retries != -1 and retry_count >= max_retries:
+                    BACKEND_LOGGER.error(f"[Session {session_id}] Max retries ({max_retries}) reached. Giving up.")
+                    break
 
             # Short delay before attempting reconnect
             await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_RETRY_DELAY", "5.0")))

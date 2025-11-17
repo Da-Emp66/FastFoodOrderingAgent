@@ -2,7 +2,7 @@ services:
   llama-cpp-server:
     container_name: llama-cpp-server-${INSTANCE_ID:-default}
     image: ghcr.io/ggml-org/llama.cpp:full-cuda
-    entrypoint: ["/app/llama-server", "--host", "0.0.0.0", "--port", "8080", "-m", "/models/ggml-model-Q4_K_M.gguf", "--mmproj", "/models/mmproj-model-f16.gguf", "-n", "4000", "-c", "8192"]
+    entrypoint: ["/app/llama-server", "--host", "0.0.0.0", "--port", "8080", "-m", "/models/ggml-model-Q4_K_M.gguf", "--mmproj", "/models/mmproj-model-f16.gguf", "-n", "4000", "-c", "24576", "--n-predict", "512"]
     # entrypoint: ["/app/llama-server", "--host", "0.0.0.0", "--port", "8080", "-m", "/models/UI-TARS-1.5-7B.Q4_K_M.gguf", "--mmproj", "/models/UI-TARS-1.5-7B.mmproj-f16.gguf", "-n", "4000", "-c", "20000"]
     volumes:
       - ./models:/models
