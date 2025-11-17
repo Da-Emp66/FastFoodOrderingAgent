@@ -19,6 +19,7 @@ from core.utils import (
     extract_final_message_content,
     from_config,
     populate_environment_specifications,
+    sanitize_container_name,
 )
 from core.web.tool_calling.interface import ToolModes
 
@@ -200,9 +201,10 @@ class SessionManager:
         return prompt.strip()
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
+        sanitized_user = sanitize_container_name(user)
         container_spec = populate_environment_specifications(
             self.configuration.web_agent_spec,
-            _DYN_WEB_AGENT_USER=user,
+            _DYN_WEB_AGENT_USER=sanitized_user,
             _DYN_WEB_AGENT_SESSION_ID=session_id,
         )
         session_url = f"ws://{container_spec['name']}:9000/active-session/view" # TODO: Don't hardcode this port

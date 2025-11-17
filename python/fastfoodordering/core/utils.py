@@ -126,6 +126,26 @@ def extract_final_message_content(response: str):
     return response.split("|>")[-1]
 
 
+def sanitize_container_name(name: str) -> str:
+    """
+    Sanitize a string to make it a valid Docker container name.
+    Docker container names must match the pattern: [a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    This function:
+    - Replaces @ and other invalid characters with hyphens
+    - Ensures the name starts with alphanumeric character
+    - Preserves only valid characters: letters, numbers, underscores, dots, and hyphens
+    """
+    # Replace @ and other invalid characters with hyphens
+    sanitized = re.sub(r'[^a-zA-Z0-9_.-]', '-', name)
+    
+    # Ensure it starts with alphanumeric character
+    if sanitized and not sanitized[0].isalnum():
+        sanitized = 'c' + sanitized
+    
+    return sanitized
+
+
 class BaseModelJSONEncoder(json.JSONEncoder):
     def default(self, obj: Any):
         if isinstance(obj, BaseModel):

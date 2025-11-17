@@ -7,7 +7,7 @@ import requests
 import yaml
 import shared
 from core.session.session import BrowserGeoLocation, ObjectiveSpecification, Session, SessionManagerToolCallResult
-from core.utils import populate_environment_specifications
+from core.utils import populate_environment_specifications, sanitize_container_name
 
 WEB_AGENT_IMAGE = os.getenv("WEB_AGENT_IMAGE", "web-agent")
 WEB_AGENT_TAG = os.getenv("WEB_AGENT_TAG", "latest")
@@ -19,6 +19,10 @@ async def start_session(
 ) -> Union[str, "SessionManagerToolCallResult"]:
     user = user.replace("{", "").replace("}", "") # STRONG TODO: LLM should not generate user, current_geolocation
     session_id = str(uuid4())
+    
+    # Sanitize the user identifier for use in container names
+    sanitized_user = sanitize_container_name(user)
+    
     container_environment_vars = os.environ.copy()
     
     replacements = {}
@@ -28,7 +32,7 @@ async def start_session(
     container_environment_vars.update(replacements)
     
     container_environment_vars.update({
-        "_DYN_WEB_AGENT_USER": user,
+        "_DYN_WEB_AGENT_USER": sanitized_user,
         "_DYN_WEB_AGENT_SESSION_ID": session_id,
         "SESSION_USER": user,
         "SESSION_ID": session_id,
@@ -38,7 +42,7 @@ async def start_session(
     })
     web_agent_environment_spec = populate_environment_specifications(
         shared.session_manager.configuration.web_agent_spec,
-        _DYN_WEB_AGENT_USER=user,
+        _DYN_WEB_AGENT_USER=sanitized_user,
         _DYN_WEB_AGENT_SESSION_ID=session_id,
     )
     print(f"Starting user `{user}`'s session `{session_id}` with the following spec:")
@@ -73,7 +77,8 @@ async def update_session(
     session_id: str,
     updated_objective_spec: ObjectiveSpecification,
 ) -> Union[str, "SessionManagerToolCallResult"]:
-    response = requests.put(f"http://{user}-session-{session_id}:9000/active-session", data=Session(
+    sanitized_user = sanitize_container_name(user)
+    response = requests.put(f"http://{sanitized_user}-session-{session_id}:9000/active-session", data=Session(
         user=user,
         session_id=session_id,
         objective_spec=updated_objective_spec,
@@ -88,7 +93,12 @@ async def cancel_session(
     user: str,
     session_id: str,
 ) -> Union[str, "SessionManagerToolCallResult"]:
-    container_name = populate_environment_specifications(shared.session_manager.configuration.web_agent_spec["name"])
+    sanitized_user = sanitize_container_name(user)
+    container_name = populate_environment_specifications(
+        shared.session_manager.configuration.web_agent_spec["name"],
+        _DYN_WEB_AGENT_USER=sanitized_user,
+        _DYN_WEB_AGENT_SESSION_ID=session_id,
+    )
     container = shared.docker_client.containers.get(container_name)
     # OR
     # container_id = session_ids_to_containers.get(session_id)
