@@ -34,6 +34,7 @@ services:
   # Certbot for Let's Encrypt SSL certificates
   certbot:
     image: certbot/certbot
+    platform: linux/arm64   
     container_name: certbot-${INSTANCE_ID:-default}
     volumes:
       - certbot-conf:/etc/letsencrypt

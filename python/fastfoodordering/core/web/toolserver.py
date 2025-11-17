@@ -266,7 +266,7 @@ async def main():
         model_name=os.getenv("MODEL_NAME"),
         model_api_key=os.getenv("OPENAI_API_KEY"),
         local_browser_launch_options={
-            "headless": True,
+            "headless": False,
             "ignoreDefaultArgs": ['--hide-scrollbars'],
         }
     )
