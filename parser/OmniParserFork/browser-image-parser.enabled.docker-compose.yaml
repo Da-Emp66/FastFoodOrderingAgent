@@ -16,6 +16,8 @@ services:
       DEVICE: ${PARSER_DEVICE:-cpu}
       USE_LOCAL_SEMANTICS: false
       ANNOTATION_SCALE_FACTOR: 4
+      FILTER_NONINTERACTIVE_ELEMENTS: false
+    restart: always
     deploy:
       resources:
         reservations:

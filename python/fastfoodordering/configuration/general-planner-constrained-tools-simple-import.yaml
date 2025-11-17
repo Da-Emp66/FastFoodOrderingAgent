@@ -1,0 +1,85 @@
+tool_mode: constrained
+tools:
+  custom_tools:
+    - function_name: screenshot
+      import_spec: core/web/toolserver.py
+    - function_name: navigate
+      import_spec: core/web/toolserver.py
+    - function_name: scroll
+      import_spec: core/web/toolserver.py
+    - function_name: click_element_by_its_text_content
+      import_spec: core/web/toolserver.py
+    - function_name: click_element_by_box_label_number
+      import_spec: core/web/toolserver.py
+    - function_name: type_text_by_box_label_number
+      import_spec: core/web/toolserver.py
+    - function_name: fill_all_text_boxes_with
+      import_spec: core/web/toolserver.py
+    # - function_name: null
+  import_hooks:
+    - spec:
+        function_name: init_globals
+        import_spec: core/web/toolserver.py
+      args: []
+      kwargs: {}
+  browser_visibility:
+    screenshot_tool_name: screenshot
+    # snapshot_tool_name: browser_snapshot,
+    tool_specific_prompt_additions:
+      navigate: |
+        Known URLs:
+          - McDonald's: https://www.mcdonalds.com/us/en-us.html
+          - Burger King: https://www.bk.com
+          - Wendy's: https://order.wendys.com/location-selection?lang=en_US
+          - Chick-fil-a: https://www.chick-fil-a.com/
+          - Arby's: https://www.arbys.com/
+          - Taco Bell: https://www.tacobell.com/
+          - Checkers and Rally's: https://checkersandrallys.com/
+          - Popeyes: https://www.popeyes.com/
+          - Domino's Pizza: https://www.dominos.com/en
+          - Papa John's: https://www.papajohns.com/
+          - Pizza Hut: https://www.pizzahut.com/
+          - Hungry Howie's: https://www.hungryhowies.com/
+  tool_system_prompt: |
+    You are an expert browser operator. Your goal is to select the best tool based on the current task. 
+  tool_selection_user_prompt_format: |
+    Overall Goal: {overall_goal}
+    Current Task: {subtask}
+    Possible Tool Options:
+    {tool_options}
+
+    Banned Tools: {banned_tools}
+    
+    Notes: If asked to go to a url, use 'navigate', not a 'click' tool.
+    
+  tool_args_user_prompt_format: |
+    Overall Goal: {overall_goal}
+    Current Task: {subtask}
+    Banned Tools: {banned_tools}
+    Selected tool is {name}. Now determine the arguments:
+
+planner_type: general
+planner:
+  prompt_template: |
+    You are an expert who can evaluate if a given subtask in the process of completing an overall goal
+    was successful or not and planning what the next steps are based on 
+    Your sole job is to determine what the next action to perform is based on the 'overall_goal',
+    previously completed steps and tool calls, and current browser screen.
+
+    (Over-arching complex task to complete) overall_goal: '{overall_goal}'
+    The possible tools available on this step are:
+    {tool_options}
+
+    1. Your output should ALWAYS include ONLY:
+     - Your description about the current screen of the browser.
+     - Your reasoning about the previous actions and whether or not they were successful.
+     - The next subtask to perform based on your reasoning. This should be a description of what the next step is. An example would be: "Type the text '123 Main St' into the text field at label number N to provide your address to the website." IF THERE IS A BOX NUMBER AVAILABLE FOR THIS ACTION, ALWAYS PROVIDE THAT LABEL NUMBER IN YOUR SUBTASK.
+    2. Make sure you do not repeatedly choose tools that have already been called on this same screen if those tools did not change the screen and did not make progress towards the overall_goal.
+    3. Make sure you are never caught in a loop making the same mistakes you made previously on the same screens.
+    4. ALWAYS CLOSE POP-UPs before continuing on a screen. This is VERY IMPORTANT.
+  visibility_settings:
+    tools_visible: True
+browser_visibility_mode: ${BROWSER_VISIBILITY_MODE}
+parser:
+  parser_uri: http://${PARSER_HOST}:${PARSER_PORT}
+  parser_mode: ${PARSER_MODE}

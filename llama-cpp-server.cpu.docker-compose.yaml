@@ -7,3 +7,4 @@ services:
       - ./models:/models
     ports:
       - "${LLM_PORT:-8000}:8080"
+    restart: always

@@ -25,14 +25,14 @@ tools:
       Username: {user}
       Session ID: {session_id}
       Current Geolocation: {current_geolocation}
-    User's query: {prompt}
+    User's query: '{prompt}'
     Your previous response: '{response}'
   tool_args_user_prompt_format: |
     User information:
       Username: {user}
       Session ID: {session_id}
       Current Geolocation: {current_geolocation}
-    User's query: {prompt}
+    User's query: '{prompt}'
     Your previous response: '{response}'
 
     Example:
@@ -41,22 +41,20 @@ tools:
       Username: john.doe@gmail.com
       Session ID: none
       Current Geolocation: {"lat": -28.71, "lon": 22.573, "accuracy": 100}
-    User's query: Can you order me a burger and fries from Wendy's?
+    User's query: 'Can you order me a burger and fries from Wendy's?'
     Your previous response: 'I will work to schedule an order at Wendy's for you.'
     ```
     ->
     ```json
     {
-      "order": "Order a burger and fries from Wendy's.",
+      "exact_user_query": "Order a burger and fries from Wendy's.",
       "user": "john.doe@gmail.com",
       "current_geolocation": {"lat": -28.71, "lon": 22.573, "accuracy": 100}
     }
     ```
 
     Rules:
-     - If you are filling in the order field, always use a complete sentence.
-     - The 'user' and 'current_geolocation' fields should be have the exact same
-     values as the input 'user' and 'current_geolocation' fields.
+     - The 'user' and 'current_geolocation' fields should be have the exact same values as the input 'user' and 'current_geolocation' fields.
 response:
   response_system_prompt: |
     You are a helpful assistant who specializes in helping users place food orders at restaurants nearby. Respond to the user based on the user's request. 
@@ -68,8 +66,8 @@ web_agent_spec:
   name: ${_DYN_WEB_AGENT_USER}-session-${_DYN_WEB_AGENT_SESSION_ID}
   # command: ${WEB_AGENT_COMMAND:-bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & sleep 1 && uv run core/web/serve.py}
   volumes:
-    - "/home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/configuration/dspy-planner-constrained-tools-custom-mcp.yaml:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-custom-mcp.yaml}"
-    - "/home/da-emp66/.cache/ms-playwright/:/home/da-emp66/.cache/ms-playwright/" # TEMPORARY -- REMOVE ONCE YOU FIGURE OUT HOW TO GET IT TO RECOGNIZE `PLAYWRIGHT_BROWSERS_PATH="/root/.cache/ms-playwright"`
+    - "/home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}"
+
 
 # ports:
 #   - "${_DYN_WEB_AGENT_PORT:-9000}:${_DYN_WEB_AGENT_PORT:-9000}"

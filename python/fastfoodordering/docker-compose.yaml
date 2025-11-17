@@ -9,6 +9,7 @@ services:
     environment:
       - OPENAI_BASE_URL=http://host.docker.internal:${LLM_PORT:-8000}
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - BROWSER_VISIBILITY_MODE=default
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Remove external port exposure - only accessible through nginx with auth
@@ -18,3 +19,5 @@ services:
       - "8080"
     extra_hosts:
       - host.docker.internal:host-gateway
+    restart: always
+    
