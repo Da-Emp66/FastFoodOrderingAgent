@@ -124,10 +124,11 @@ async def click_element_by_box_label_number(number: int):
     try:
         item = get_item_by_label_number(number)
         if type(item) == str: return item
-        center_x = (item.bbox[0] + item.bbox[2]) / 2
-        center_y = (item.bbox[1] + item.bbox[3]) / 2
-        await page.wait_for_load_state("domcontentloaded")
-
+        # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
+        center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
+        center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
+        # await page.wait_for_load_state("domcontentloaded")
+        
         # Convert relative coordinates to absolute viewport coordinates
         # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
         vx = center_x_relative * page._page.viewport_size['width']

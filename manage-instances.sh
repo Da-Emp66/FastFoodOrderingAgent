@@ -42,7 +42,7 @@ ensure_docker_resources() {
     # Create network if it doesn't exist
     if ! docker network inspect "$network_name" >/dev/null 2>&1; then
         echo "  Creating network: $network_name"
-        docker network create "$network_name" >/dev/null
+        # docker network create "$network_name" >/dev/null
     fi
     
     # Create volumes if they don't exist
@@ -50,7 +50,7 @@ ensure_docker_resources() {
     for volume in "${volumes[@]}"; do
         if ! docker volume inspect "$volume" >/dev/null 2>&1; then
             echo "  Creating volume: $volume"
-            docker volume create "$volume" >/dev/null
+            # docker volume create "$volume" >/dev/null
         fi
     done
 }

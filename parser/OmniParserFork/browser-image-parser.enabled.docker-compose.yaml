@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - ${PARSER_PORT}:${PARSER_PORT}
     expose:
       - "${PARSER_PORT:-8055}"
     volumes:
@@ -18,8 +20,6 @@ services:
       ANNOTATION_SCALE_FACTOR: 4
       FILTER_NONINTERACTIVE_ELEMENTS: false
     restart: always
-    networks:
-      - default
     deploy:
       resources:
         reservations:
@@ -27,8 +27,3 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
-networks:
-  default:
-    external: true
-    name: ${DOCKER_NETWORK_NAME:-fast-food}
