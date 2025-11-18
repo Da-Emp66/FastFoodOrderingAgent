@@ -26,7 +26,7 @@ from core.session.session import (
     SessionManagerChatResult,
     SessionManagerPrompt,
 )
-from core.utils import populate_environment_specifications, sanitize_container_name
+from core.utils import populate_environment_specifications, remove_special_characters
 
 # Load environment variables
 dotenv_to_use = find_dotenv()
@@ -136,7 +136,7 @@ async def handle_browser_click(user: str, session_id: str, coordinates: BrowserC
     """Forward a user click to the web agent container."""
     try:
         # Get the container name for this session
-        sanitized_user = sanitize_container_name(user)
+        sanitized_user = remove_special_characters(user)
         container_spec = populate_environment_specifications(
             shared.session_manager.configuration.web_agent_spec,
             _DYN_WEB_AGENT_USER=sanitized_user,
@@ -176,7 +176,7 @@ async def handle_browser_type(user: str, session_id: str, text_input: BrowserTex
     """Forward user text input to the web agent container."""
     try:
         # Get the container name for this session
-        sanitized_user = sanitize_container_name(user)
+        sanitized_user = remove_special_characters(user)
         container_spec = populate_environment_specifications(
             shared.session_manager.configuration.web_agent_spec,
             _DYN_WEB_AGENT_USER=sanitized_user,
