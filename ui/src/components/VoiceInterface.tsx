@@ -92,11 +92,10 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   // Get user's geolocation
   const { location: geolocation, error: geoError, loading: geoLoading } = useGeolocation();
 
-  // Function to send message to backend
 const handleSendMessage = (text: string) => {
   console.log("[SEND] User → Bot:", text);
 
-  // 1. Add user bubble
+  // Add user bubble
   const userMessage: Message = {
     id: "user-" + Date.now(),
     text,
@@ -105,25 +104,15 @@ const handleSendMessage = (text: string) => {
   };
   setMessages(prev => [...prev, userMessage]);
 
-  // 2. Prepare a new bot bubble BEFORE chunks arrive
-  const botId = "bot-" + Date.now();
-  currentBotIdRef.current = botId;
+  // IMPORTANT: reset bot state for next response
+  currentBotIdRef.current = null;
   botBufferRef.current = "";
-  isStreamingRef.current = true;
+  isStreamingRef.current = false;
 
-  // 3. Add empty bot bubble (PERMANENT)
-  setMessages(prev => [
-    ...prev,
-    {
-      id: botId,
-      text: "",
-      isUser: false,
-      isComplete: false,
-      timestamp: new Date()
-    }
-  ]);
+  // Show thinking bubble
+  setIsLoadingResponse(true);
 
-  // 4. Send through websocket
+  // send to WS
   sendWsMessage(text);
 };
 
@@ -338,61 +327,85 @@ useEffect(() => {
     setLog(prev => [...prev, "WS closed"]);
   };
   ws.onmessage = (event) => {
-  const raw = event.data.trim();
-  console.log("[WS] Chunk:", raw);
+    const raw = event.data;
+    const chunk = raw.trim();
+    console.log("[WS] Chunk:", chunk);
 
-  // ============================
-  // END OF BOT MESSAGE
-  // ============================
-  if (raw === "[[END]]") {
+    // =========================================
+    // END OF BOT MESSAGE
+    // =========================================
+    if (chunk === "[[END]]") {
+      setIsLoadingResponse(false);
 
+      const botId = currentBotIdRef.current;
+      if (!botId) return;
+
+      // Mark bubble complete
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === botId ? { ...m, isComplete: true } : m
+        )
+      );
+
+      // Speak final accumulated text
+      const finalText = botBufferRef.current.trim();
+      console.log("[TTS FINAL]:", finalText);
+
+      if (finalText.length > 0) {
+        if (recognitionRef.current) recognitionRef.current.stop();
+        speak(finalText);
+      }
+
+      // Reset state
+      botBufferRef.current = "";
+      currentBotIdRef.current = null;
+      isStreamingRef.current = false;
+      return;
+    }
+
+    // =========================================
+    // FIRST TOKEN ARRIVES → CREATE BUBBLE
+    // =========================================
+    if (!currentBotIdRef.current) {
+      const botId = "bot-" + Date.now();
+      currentBotIdRef.current = botId;
+      isStreamingRef.current = true;
+
+      // Hide Thinking…
+      setIsLoadingResponse(false);
+
+      // Create bot bubble
+      setMessages(prev => [
+        ...prev,
+        {
+          id: botId,
+          text: "",
+          isUser: false,
+          isComplete: false,
+          timestamp: new Date()
+        }
+      ]);
+    }
+
+    // =========================================
+    // STREAMING APPEND
+    // (happens for every chunk)
+    // =========================================
     const botId = currentBotIdRef.current;
     if (!botId) return;
 
-    // Mark the bubble complete
+    // Accumulate text
+    botBufferRef.current += " " + chunk;
+
+    // Update bubble
     setMessages(prev =>
       prev.map(m =>
-        m.id === botId ? { ...m, isComplete: true } : m
+        m.id === botId
+          ? { ...m, text: (m.text + " " + chunk).trim() }
+          : m
       )
     );
-
-    // Speak final output straight from the buffer
-    const finalText = botBufferRef.current.trim();
-    console.log("[TTS FINAL]:", finalText);
-
-    if (finalText && finalText.length > 0) {
-      if (recognitionRef.current) recognitionRef.current.stop();
-      speak(finalText);
-    }
-
-    // Reset
-    botBufferRef.current = "";
-    isStreamingRef.current = false;
-    currentBotIdRef.current = null;
-
-    return;
-  }
-
-
-  // NEW BOT MESSAGE TAG (optional)
-  if (raw.startsWith("<reserved")) {
-    // Ignore. We already created the bubble in handleSendMessage.
-    return;
-  }
-
-  // NORMAL TOKEN
-  const botId = currentBotIdRef.current;
-  if (!botId) return;
-
-  botBufferRef.current += " " + raw;
-
-  setMessages(prev => {
-    return prev.map(m =>
-      m.id === botId ? { ...m, text: botBufferRef.current.trim() } : m
-    );
-  });
-};
-
+  };
 
 }, []); 
 
