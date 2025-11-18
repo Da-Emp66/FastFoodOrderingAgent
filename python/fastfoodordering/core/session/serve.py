@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from stagehand.agent.agent import MODEL_TO_CLIENT_CLASS_MAP, OpenAICUAClient
 import uvicorn
 import yaml
+from fastapi import WebSocket
 
 from core.session.session import (
     VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH,
@@ -222,6 +223,44 @@ def on_exit():
         container.remove()
         print(f"Stopped and removed container {container_id}.")
     print("Exit sequence stopped all session containers.")
+
+
+@app.websocket("/ws")
+async def websocket_chat(ws: WebSocket):
+    await ws.accept()
+    print("[WS] Connected")
+
+    try:
+        while True:
+            message = await ws.receive_text()
+            print("[WS] Received:", message)
+
+            # Keep-alive message from UI
+            if message == "__HELLO__":
+                continue
+
+            # Build prompt object exactly like POST /sessions/chat
+            prompt = SessionManagerPrompt(
+                user="websocket_user",
+                session_id="websocket",
+                prompt=message,
+                current_geolocation=None
+            )
+
+            # Use the streaming version that:
+            #   - streams tokens live
+            #   - then executes tool logic
+            #   - then sends [[END]]
+            await shared.session_manager.handle_gui_ordering_streaming(
+                prompt,
+                ws_send=lambda text: ws.send_text(text)
+            )
+
+    except Exception as e:
+        print("WS closed:", e)
+
+
+
 
 def main(args):
     atexit.register(on_exit)

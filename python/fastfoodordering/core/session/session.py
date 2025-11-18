@@ -122,7 +122,130 @@ class SessionManager:
 
         # Otherwise use GUI mode (current AI agent behavior)
         return await self.handle_gui_ordering(prompt)
-    
+
+
+    async def run_streaming(self, prompt: SessionManagerPrompt):
+        """
+        Wrapper around __call__ that reuses the existing POST logic
+        and yields it as streaming events for the WebSocket.
+        This ensures tools and sessions behave exactly like the POST endpoint.
+        """
+        # Reuse the existing logic that you know works
+        result = await self.__call__(prompt)
+
+        # One assistant message event with the full response text
+        yield {
+            "type": "assistant_message",
+            "delta": result.response,
+        }
+
+        # Optional: if a new session was created, you can emit a separate event
+        if result.session_id is not None:
+            yield {
+                "type": "session_created",
+                "session_id": result.session_id,
+                "delta": "",
+            }
+
+    async def handle_gui_ordering_streaming(self, prompt, ws_send):
+        """
+        Streams LLM tokens immediately, then continues the normal logic
+        exactly like handle_gui_ordering, without modifying it.
+        """
+
+        # 1. STREAM THE LLM TOKEN BY TOKEN
+        stream = litellm.completion(
+            os.getenv("MODEL"),
+            messages=[
+                {"content": self.configuration.response.response_system_prompt, "role": "system"},
+                {"content": prompt.prompt, "role": "user"},
+            ],
+            stream=True,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=self.configuration.response.max_tokens,
+        )
+
+        full = ""
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.get("content", "")
+            if delta:
+                full += delta
+                await ws_send(delta)   # <-- send token to UI live
+
+        # Clean up final response
+        resolved_response = extract_final_message_content(full)
+
+        # 2. NOW RUN THE NORMAL LOGIC (but bypass the blocking LLM call)
+        # We must call the tool logic manually:
+        result = await self._handle_gui_ordering_after_llm(prompt, resolved_response)
+
+        # 3. Return tool results (if any)
+        if result.session_id:
+            await ws_send(f"[[SESSION_CREATED:{result.session_id}]]")
+
+        # 4. Finish
+        await ws_send("[[END]]")
+
+    async def _handle_gui_ordering_after_llm(self, prompt, response):
+        # Run only the tool selection + tool execution exactly like before.
+        # But we skip the LLM call entirely.
+        
+        from core.session.session_tools import (
+            cancel_session,
+            start_session,
+            update_session,
+        )
+
+        await self.tool_caller.initialize_tools()
+
+        # Determine tool (exact same logic)
+        try:
+            generated_tool = await self.tool_caller.determine_tool(
+                user=prompt.user,
+                prompt=prompt.prompt,
+                response=response,
+                session_id=prompt.session_id,
+                current_geolocation=prompt.current_geolocation,
+                skip_args=True,
+            )
+        except Exception as e:
+            generated_tool = None
+            print(f"Failed to determine tool: {e}")
+
+        session_id = None
+
+        if generated_tool is not None:
+            tool = generated_tool.spec.tool
+
+            if tool == "start_session":
+                result = await start_session(
+                    exact_user_query=prompt.prompt,
+                    user=prompt.user,
+                    current_geolocation=prompt.current_geolocation,
+                )
+                session_id = json.loads(result).get("session_id")
+
+            elif tool == "update_session":
+                result = await update_session(
+                    user=prompt.user,
+                    session_id=prompt.session_id,
+                    updated_objective_spec=ObjectiveSpecification(
+                        objective=prompt.prompt
+                    ),
+                )
+
+            elif tool == "cancel_session":
+                result = await cancel_session(
+                    user=prompt.user,
+                    session_id=prompt.session_id,
+                )
+
+        return SessionManagerChatResult(
+            response=response,
+            session_id=session_id,
+        )
+
     async def handle_gui_ordering(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
         """Handle ordering using the AI agent (GUI mode)"""
         from core.session.session_tools import (

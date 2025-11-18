@@ -31,6 +31,7 @@ interface Message {
   text: string;
   isUser: boolean;
   timestamp: Date;
+  isComplete?: boolean;
 }
 
 interface VoiceInterfaceProps {
@@ -55,7 +56,15 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   const [clickIndicators, setClickIndicators] = useState<ClickIndicator[]>([]);
   const [username] = useState(() => localStorage.getItem('username') || 'user');
   const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
-  const { speak } = useSpeechSynthesis();
+  const { speak, speaking } = useSpeechSynthesis();
+  const wsRef = useRef<WebSocket | null>(null);
+  const currentBotIdRef = useRef<string | null>(null);
+  const botBufferRef = useRef<string>("");   // accumulates raw chunks
+  const isStreamingRef = useRef<boolean>(false);
+
+  const [log, setLog] = useState<string[]>([]);
+  const [wsReady, setWsReady] = useState(false);
+  const messageQueue = useRef<string[]>([]);
 
   // Text input modal state
   const [showTextModal, setShowTextModal] = useState(false);
@@ -64,6 +73,10 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
 
   // Detect if mobile based on screen width (simple check)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    console.log("[TTS] speaking =", speaking);
+  }, [speaking]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -80,60 +93,41 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   const { location: geolocation, error: geoError, loading: geoLoading } = useGeolocation();
 
   // Function to send message to backend
-  const handleSendMessage = async (text: string) => {
-    // Add user message to UI
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      text,
-      isUser: true,
-      timestamp: new Date()
-    };
-    setMessages(prev => [...prev, userMessage]);
+const handleSendMessage = (text: string) => {
+  console.log("[SEND] User → Bot:", text);
 
-    // Debug: log geolocation
-    console.log('[DEBUG] Sending request with geolocation:', geolocation);
-    console.log('[DEBUG] Geolocation error:', geoError);
-    console.log('[DEBUG] Geolocation loading:', geoLoading);
-
-    // Send to backend
-    setIsLoadingResponse(true);
-    try {
-      const response = await sendSessionChat(
-        username,
-        text,
-        sessionId,
-        geolocation,
-        orderingMode
-      );
-
-      // Update session ID if returned
-      if (response.session_id) {
-        setSessionId(response.session_id);
-      }
-
-      // Add AI response to UI
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: response.response,
-        isUser: false,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, aiMessage]);
-      speak(response.response);
-
-    } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: 'Sorry, there was an error processing your request. Please try again.',
-        isUser: false,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoadingResponse(false);
-    }
+  // 1. Add user bubble
+  const userMessage: Message = {
+    id: "user-" + Date.now(),
+    text,
+    isUser: true,
+    timestamp: new Date()
   };
+  setMessages(prev => [...prev, userMessage]);
+
+  // 2. Prepare a new bot bubble BEFORE chunks arrive
+  const botId = "bot-" + Date.now();
+  currentBotIdRef.current = botId;
+  botBufferRef.current = "";
+  isStreamingRef.current = true;
+
+  // 3. Add empty bot bubble (PERMANENT)
+  setMessages(prev => [
+    ...prev,
+    {
+      id: botId,
+      text: "",
+      isUser: false,
+      isComplete: false,
+      timestamp: new Date()
+    }
+  ]);
+
+  // 4. Send through websocket
+  sendWsMessage(text);
+};
+
+
 
   // Handle initial query - wait for geolocation to load first
   const hasProcessedInitialQuery = useRef(false);
@@ -162,11 +156,23 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
 
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
-        setCurrentInput(transcript);
 
-        // Send message to backend
+        console.log("[STT] Transcript detected:", transcript);
+        console.log("[STT] isListening:", isListening);
+        console.log("[STT] recognitionRef.current exists:", !!recognitionRef.current);
+        
+        // Detect TTS → STT feedback
+        if (transcript && messages.length > 0) {
+          const botMsg = messages[messages.length - 1];
+          if (!botMsg.isUser && transcript.toLowerCase().includes(botMsg.text.toLowerCase().slice(0, 20))) {
+            console.warn("[FEEDBACK WARNING] STT is hearing TTS audio! Loop detected.");
+          }
+        }
+
+        setCurrentInput(transcript);
         handleSendMessage(transcript);
       };
+
 
       recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
@@ -300,6 +306,104 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
     setModalTextInput('');
     setClickCoords(null);
   };
+
+const hasWsInitialized = useRef(false);
+
+useEffect(() => {
+    if (hasWsInitialized.current) return;
+  hasWsInitialized.current = true;
+
+  console.log("### WebSocket initialized once ###");
+
+  const ws = new WebSocket("ws://localhost:5000/ws");
+  wsRef.current = ws;
+
+  ws.onopen = () => {
+    console.log("WS connected");
+    setWsReady(true);
+
+    // flush queued messages
+    messageQueue.current.forEach(m => ws.send(m));
+    messageQueue.current = [];
+  };
+
+
+  ws.onerror = (err) => {
+    console.log("WS error", err);
+    setLog(prev => [...prev, "WS error"]);
+  };
+
+  ws.onclose = () => {
+    console.log("WS closed");
+    setLog(prev => [...prev, "WS closed"]);
+  };
+  ws.onmessage = (event) => {
+  const raw = event.data.trim();
+  console.log("[WS] Chunk:", raw);
+
+  // ============================
+  // END OF BOT MESSAGE
+  // ============================
+  if (raw === "[[END]]") {
+
+    const botId = currentBotIdRef.current;
+    if (!botId) return;
+
+    // Mark the bubble complete
+    setMessages(prev =>
+      prev.map(m =>
+        m.id === botId ? { ...m, isComplete: true } : m
+      )
+    );
+
+    // Speak final output straight from the buffer
+    const finalText = botBufferRef.current.trim();
+    console.log("[TTS FINAL]:", finalText);
+
+    if (finalText && finalText.length > 0) {
+      if (recognitionRef.current) recognitionRef.current.stop();
+      speak(finalText);
+    }
+
+    // Reset
+    botBufferRef.current = "";
+    isStreamingRef.current = false;
+    currentBotIdRef.current = null;
+
+    return;
+  }
+
+
+  // NEW BOT MESSAGE TAG (optional)
+  if (raw.startsWith("<reserved")) {
+    // Ignore. We already created the bubble in handleSendMessage.
+    return;
+  }
+
+  // NORMAL TOKEN
+  const botId = currentBotIdRef.current;
+  if (!botId) return;
+
+  botBufferRef.current += " " + raw;
+
+  setMessages(prev => {
+    return prev.map(m =>
+      m.id === botId ? { ...m, text: botBufferRef.current.trim() } : m
+    );
+  });
+};
+
+
+}, []); 
+
+const sendWsMessage = (text: string) => {
+  if (wsReady && wsRef.current?.readyState === WebSocket.OPEN) {
+    wsRef.current.send(text);
+  } else {
+    console.log("[WS] Queueing until ready:", text);
+    messageQueue.current.push(text);
+  }
+};
 
   return (
     <>
