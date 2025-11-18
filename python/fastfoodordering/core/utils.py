@@ -523,6 +523,30 @@ class ConstrainedToolCaller(ToolCaller):
                 val_str = str(val)
             prompt = prompt.replace(f"{{{key}}}", val_str)
         return prompt
+    
+    def extract_via_schema(self, prompt: str, schema_cls: type[BaseModel], **kwargs) -> BaseModel:
+        success = False
+        while not success:
+            try:
+                schema = schema_cls.model_json_schema()
+                with guidance_user():
+                    prompt = self.format_prompt_string_with_arguments(prompt, kwargs)
+                    self.lm += prompt
+                with guidance_assistant():
+                    self.lm += generate_constrained_json(
+                        name="extracted_values",
+                        schema=schema,
+                        temperature=0.0, # 0.0 temperature for extraction task
+                    )
+                    extracted = schema_cls.model_validate_json(self.lm["extracted_values"])
+                    success = True
+                    return extracted
+            except Exception as e:
+                print(traceback.format_exc())
+                print(f"Encountered exception when determining tool for constrained generation: {str(e)}")
+                print("Retrying in 5 seconds...")
+                asyncio.sleep(5)
+                print("Retrying...")
 
 class History(BaseModel):
     messages: List[Dict[str, Any]] = []

@@ -7,6 +7,7 @@ from core.session.session import CompletionStatus, ObjectiveSpecification, Sessi
 from core.web.agent import BrowserAgentSystem
 from core.web.agent_interface import Agent
 from core.web.simple_agent import SimpleBrowserAgent
+from core.utils import remove_special_characters
 
 # MAX_WEBSOCKET_FAILURES = os.getenv("MAX_WEBSOCKET_FAILURES", -1)
 MAX_TASK_ITERATIONS = os.getenv("MAX_TASK_ITERATIONS", -1)
@@ -22,22 +23,31 @@ WEB_AGENT_CONFIG_PATH = os.getenv(
 )
 BROWSER_AGENT_TYPE = os.getenv(
     "BROWSER_AGENT_TYPE",
-    "default"
+    "base"
 )
 
 browser_agent = None
-if BROWSER_AGENT_TYPE.lower() == "simple":
+_filtered_browser_agent_type = remove_special_characters(BROWSER_AGENT_TYPE.lower())
+if "browseruse" in _filtered_browser_agent_type:
     if WEB_AGENT_CONFIG_PATH is None:
         WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "simple-browser-agent.yaml")
     print("Using BROWSER_AGENT_TYPE default = Instantiating SimpleBrowserAgent")
+    os.environ["SCREENSHOT_STRATEGY"] = "externalrepeated" # TODO: SUPPORT THIS IN SIMPLEBROWSERAGENT AND API
     browser_agent = SimpleBrowserAgent()
     print("SimpleBrowserAgent instantiated!")
-else:
+elif "base" in _filtered_browser_agent_type and "gpt" in _filtered_browser_agent_type:
+    pass
+elif "base" in _filtered_browser_agent_type or "minicpm" in _filtered_browser_agent_type:
     if WEB_AGENT_CONFIG_PATH is None:
         WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-simple-import.yaml")
-    print("Using BROWSER_AGENT_TYPE default = Instantiating BrowserAgentSystem")
+    print("Using BROWSER_AGENT_TYPE base = Instantiating BrowserAgentSystem")
     browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
     print("BrowserAgentSystem instantiated!")
+elif "api" in _filtered_browser_agent_type:
+    os.environ["SCREENSHOT_STRATEGY"] = "externalrepeated" # TODO: SUPPORT THIS IN SIMPLEBROWSERAGENT AND API
+    pass
+else:
+    raise NotImplementedError(f"Could not determine agent type for mode '{BROWSER_AGENT_TYPE}' interpreted as -> '{_filtered_browser_agent_type}'. Failing to instantiate agent.")
 
 print(f"Using WEB_AGENT_CONFIG_PATH at {WEB_AGENT_CONFIG_PATH}")
 

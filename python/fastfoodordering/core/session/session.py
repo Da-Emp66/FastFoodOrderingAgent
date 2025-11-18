@@ -48,7 +48,7 @@ class SessionManagerPrompt(BaseModel):
     current_geolocation: Optional[BrowserGeoLocation] = None
     """The user's current geolocation. To be used for the browser proxied location on session launch."""
     ordering_mode: Optional[str] = None
-    """The ordering mode: 'GUI' for AI agent, 'API-Wendys' or 'API-McDonalds' for hardcoded script ordering."""
+    """The ordering mode: i.e., ~GUI for GUI-based agent or ~API for API-based ordering method."""
 
 class SessionManagerToolCallResult(BaseModel):
     result: str
@@ -72,6 +72,31 @@ class OrderDetails(BaseModel):
     pickup_or_delivery: Optional[Literal['pickup', 'delivery']] = None
     restaurant_location: Optional[str] = None
     delivery_address: Optional[str] = None
+
+    def incomplete_fields(self) -> List[str]:
+        incomplete = []
+        for field in [
+            "restaurant_name",
+            "order",
+            "pickup_or_delivery",
+            "restaurant_location",
+            "delivery_address",
+        ]:
+            if self.field_not_provided(getattr(self, field)):
+                incomplete.append(field)
+        return incomplete
+    
+    def field_not_provided(self, field: Any) -> bool:
+        if field is None or (
+            isinstance(field, str) and
+            ('None' in field or 
+            'none' in field or 
+            'null' in field or 
+            'not_provided' in field)
+        ):
+            return True
+        return False
+
 
 class ObjectiveSpecification(BaseModel):
     objective: str = Field(alias="objective")
@@ -117,7 +142,7 @@ class SessionManager:
     
     async def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
         # Check if using API mode (hardcoded scripts)
-        if prompt.ordering_mode and prompt.ordering_mode.startswith("API-"):
+        if prompt.ordering_mode and prompt.ordering_mode.startswith("API"):
             return await self.handle_api_ordering(prompt)
 
         # Otherwise use GUI mode (current AI agent behavior)
@@ -133,7 +158,8 @@ class SessionManager:
 
         await self.tool_caller.initialize_tools()
     
-        # Determine what to do and inform the user
+        # Describe what the user wants and how it relates to
+        # starting, updating, or canceling an order
         response = litellm.completion(
             os.getenv("MODEL"),
             messages=[
@@ -164,21 +190,22 @@ class SessionManager:
         session_id = None
         if generated_tool is not None:
 
-            # # TODO: Validate order details before starting and/or updating the session
-            # if generated_tool.spec.tool == "start_session" \
-            #     or generated_tool.spec.tool == "update_session":
-            #     ui_id = (prompt.ui_id or DEFAULT_UI_UUID)
-            #     current_known_order_details = self.order_details.get(prompt.user, {}).get(ui_id, None)
-            #     current_known_order_details = self.extract_order_details(
-            #         prompt=prompt.prompt,
-            #         current_known_order_details=current_known_order_details,
-            #     )
-            #     self.order_details[prompt.user][ui_id] = current_known_order_details
-            #     if current_known_order_details.is_incomplete():
-            #         # TODO: Query for more information
-            #         return SessionManagerChatResult(
-            #             response=response,
-            #         )
+            # TODO: Validate order details before starting and/or updating the session
+            if generated_tool.spec.tool == "start_session" \
+                or generated_tool.spec.tool == "update_session":
+                ui_id = (prompt.ui_id or DEFAULT_UI_UUID)
+                current_known_order_details = self.order_details.get(prompt.user, {}).get(ui_id, None)
+                current_known_order_details = self.extract_order_details(
+                    prompt=prompt.prompt,
+                    current_known_order_details=current_known_order_details,
+                )
+                self.order_details[prompt.user][ui_id] = current_known_order_details
+                incomplete_fields = current_known_order_details.incomplete_fields()
+                if len(incomplete_fields) > 0:
+                    # TODO: Query for more information
+                    return SessionManagerChatResult(
+                        response=response,
+                    )
 
             if generated_tool.spec.tool == "start_session":
                 if prompt.session_id is not None:
@@ -195,6 +222,7 @@ class SessionManager:
                         exact_user_query=prompt.prompt,
                         user=prompt.user,
                         current_geolocation=prompt.current_geolocation,
+                        session_mode=prompt.ordering_mode,
                     )
             elif generated_tool.spec.tool == "update_session":
                 if prompt.session_id is None:
@@ -203,6 +231,7 @@ class SessionManager:
                         exact_user_query=prompt.prompt,
                         user=prompt.user,
                         current_geolocation=prompt.current_geolocation,
+                        session_mode=prompt.ordering_mode,
                     )
                 else:
                     result = await update_session(
@@ -281,6 +310,13 @@ class SessionManager:
 
         # Fallback: return the entire prompt (let the script handle it)
         return prompt.strip()
+    
+    async def extract_order_details(self, prompt: str, current_known_order_details: OrderDetails) -> OrderDetails:
+        return self.tool_caller.extract_via_schema(
+            prompt,
+            schema_cls=OrderDetails,
+            known_details=current_known_order_details.model_dump_json(indent=2),
+        )
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
         user_without_special_characters = remove_special_characters(user)

@@ -15,6 +15,7 @@ async def start_session(
     exact_user_query: str,
     user: str,
     current_geolocation: Optional[BrowserGeoLocation] = None,
+    session_mode: Optional[str] = None,
 ) -> Union[str, "SessionManagerToolCallResult"]:
     user_without_special_characters = remove_special_characters(user)
     session_id = str(uuid4())
@@ -33,7 +34,8 @@ async def start_session(
         "SESSION_ID": session_id,
         "SESSION_OBJECTIVE": exact_user_query,
         "BROWSER_GEOLOCATION": current_geolocation.model_dump_json(),
-        # "BROWSER_AGENT_TYPE": ,
+        "BROWSER_AGENT_TYPE": session_mode,
+        # TODO: Need to add more from order details
     })
     web_agent_environment_spec = populate_environment_specifications(
         shared.session_manager.configuration.web_agent_spec,
