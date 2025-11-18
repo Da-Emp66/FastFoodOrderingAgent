@@ -15,6 +15,14 @@ tools:
       import_spec: core/web/toolserver.py
     - function_name: fill_all_text_boxes_with
       import_spec: core/web/toolserver.py
+
+    - function_name: click_coordinates
+      import_spec: core/web/toolserver.py
+    - function_name: click_relative_coordinates
+      import_spec: core/web/toolserver.py
+    - function_name: type_text_character_by_character
+      import_spec: core/web/toolserver.py
+
     # - function_name: null
   import_hooks:
     - spec:

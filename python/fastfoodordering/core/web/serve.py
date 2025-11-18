@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
+from core.utils import GeneratedTool, GeneratedToolSpec
 from core.session.session import Session, SessionCompletionStatus
 
 # Load environment variables
@@ -76,25 +77,39 @@ def update_overall_goal(session: Session):
 @app.post("/active-session/click")
 async def handle_click(coordinates: BrowserClickCoordinates):
     """Handle a user click at relative coordinates (0-1 range)."""
+    tool_name = "click_relative_coordinates"
     try:
-        # Get the browser agent's tool caller
-        agent = shared.this_session.web_agent
+        agent = shared.this_session.browser_agent
+        usable = agent.tool_caller.tools.get(tool_name, None)
+        if usable is None:
+            return Response(status_code=400, content="Tool to click relative coordinates not available.")
+        tool = GeneratedTool(
+            usable=usable,
+            spec=GeneratedToolSpec(
+                tool=tool_name,
+                args={
+                    "x": coordinates.x,
+                    "y": coordinates.y,
+                }
+            )
+        )
+        result = await agent.tool_caller.call_tool(tool)
 
-        # Get viewport size from the page
-        page = agent.tool_caller.page if hasattr(agent.tool_caller, 'page') else None
-        if page is None:
-            return Response(status_code=400, content="Browser page not available")
+        # # Get the browser agent's tool caller
+        # agent = shared.this_session.browser_agent
+        # # Get viewport size from the page
+        # page = agent.tool_caller.page if hasattr(agent.tool_caller, 'page') else None
+        # if page is None:
+        #     return Response(status_code=400, content="Browser page not available")
+        # # Convert relative coordinates to absolute pixel coordinates
+        # viewport_width = page._page.viewport_size['width']
+        # viewport_height = page._page.viewport_size['height']
+        # abs_x = coordinates.x * viewport_width
+        # abs_y = coordinates.y * viewport_height
+        # # Perform the click
+        # await page.mouse.click(abs_x, abs_y)
 
-        # Convert relative coordinates to absolute pixel coordinates
-        viewport_width = page._page.viewport_size['width']
-        viewport_height = page._page.viewport_size['height']
-        abs_x = coordinates.x * viewport_width
-        abs_y = coordinates.y * viewport_height
-
-        # Perform the click
-        await page.mouse.click(abs_x, abs_y)
-
-        return Response(status_code=200)
+        return Response(status_code=200, content=result)
     except Exception as e:
         print(f"Error handling click: {e}")
         return Response(status_code=500, content=str(e))
@@ -102,19 +117,30 @@ async def handle_click(coordinates: BrowserClickCoordinates):
 @app.post("/active-session/type")
 async def handle_type(text_input: BrowserTextInput):
     """Type text into the currently focused element."""
+    tool_name = "type_text_character_by_character"
     try:
         # Get the browser agent's tool caller
-        agent = shared.this_session.web_agent
+        agent = shared.this_session.browser_agent
+        usable = agent.tool_caller.tools.get(tool_name, None)
+        if usable is None:
+            return Response(status_code=400, content="Tool to type character by character not available.")
+        tool = GeneratedTool(
+            usable=usable,
+            spec=GeneratedToolSpec(
+                tool=tool_name,
+                args={ "text_input": text_input.text }
+            )
+        )
+        result = await agent.tool_caller.call_tool(tool)
 
-        # Get the page
-        page = agent.tool_caller.page if hasattr(agent.tool_caller, 'page') else None
-        if page is None:
-            return Response(status_code=400, content="Browser page not available")
+        # page = agent.tool_caller.page if hasattr(agent.tool_caller, 'page') else None
+        # if page is None:
+        #     return Response(status_code=400, content="Browser page not available")
 
-        # Type the text into the currently focused element
-        await page.keyboard.type(text_input.text)
+        # # Type the text into the currently focused element
+        # await page.keyboard.type(text_input.text)
 
-        return Response(status_code=200)
+        return Response(status_code=200, content=result)
     except Exception as e:
         print(f"Error handling text input: {e}")
         return Response(status_code=500, content=str(e))

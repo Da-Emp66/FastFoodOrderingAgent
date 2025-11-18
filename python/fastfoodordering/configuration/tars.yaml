@@ -13,8 +13,14 @@ tools:
       import_spec: core/web/toolserver.py
     - function_name: fill_text_box
       import_spec: core/web/toolserver.py
-    - function_name: find
+
+    - function_name: click_coordinates
       import_spec: core/web/toolserver.py
+    - function_name: click_relative_coordinates
+      import_spec: core/web/toolserver.py
+    - function_name: type_text_character_by_character
+      import_spec: core/web/toolserver.py
+
     # - function_name: null
   browser_visibility:
     screenshot_tool_name: screenshot

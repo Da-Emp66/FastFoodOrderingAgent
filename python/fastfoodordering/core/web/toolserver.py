@@ -24,36 +24,9 @@ MOST_RECENT_CLICK = None
 page: StagehandPage = None
 mcp = FastMCP("Custom StageHand MCP Server")
 
-@mcp.tool
-async def screenshot():
-    global page, MOST_RECENT_CLICK
-    # print("In function call `screenshot`...")
-    try:
-        path = shared.CURRENT_SCREENSHOT_PATH
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        # Take screenshot of only the visible viewport (not full_page)
-        # This ensures OmniParser labels match the visible area
-        await page._page.screenshot(path=path, full_page=False)
-
-        # Add visual marker for the most recent click
-        if MOST_RECENT_CLICK is not None:
-            # MOST_RECENT_CLICK now stores absolute viewport coordinates (vx, vy)
-            # We need to convert to relative coordinates (0-1) for place_coordinate_on_image
-            viewport_width = page._page.viewport_size['width']
-            viewport_height = page._page.viewport_size['height']
-            relative_x = MOST_RECENT_CLICK[0] / viewport_width
-            relative_y = MOST_RECENT_CLICK[1] / viewport_height
-            cv2.imwrite(
-                path,
-                place_coordinate_on_image(
-                    cv2.imread(path),
-                    coordinate=(relative_x, relative_y),
-                    coordinate_system='relative'
-                )
-            )
-        return path
-    except Exception as e:
-        return str(e)
+#####################################################################
+### Tools for LLM
+#####################################################################
 
 @mcp.tool
 async def navigate(url: str):
@@ -105,17 +78,6 @@ async def click_element_by_its_text_content(text: str):
     except Exception as e:
         return str(e)
 
-# @mcp.tool
-# async def click_coordinates(x: float, y: float):
-#     global page
-#     print("In function call `click_coordinates`...")
-#     try:
-#         await page._page.mouse.click(x, y)
-#         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
-#         return "success"
-#     except Exception as e:
-#         return str(e)
-
 @mcp.tool
 async def click_element_by_box_label_number(number: int):
     global page, MOST_RECENT_CLICK
@@ -128,16 +90,13 @@ async def click_element_by_box_label_number(number: int):
         center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
         center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
         # await page.wait_for_load_state("domcontentloaded")
-        
         # Convert relative coordinates to absolute viewport coordinates
         # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
         vx = center_x_relative * page._page.viewport_size['width']
         vy = center_y_relative * page._page.viewport_size['height']
-
         await page.bring_to_front()
         await page._page.mouse.move(vx, vy)
         await page._page.mouse.click(vx, vy)
-
         # Store absolute click coordinates for visual feedback
         MOST_RECENT_CLICK = (vx, vy)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
@@ -157,25 +116,6 @@ async def type_text_by_box_label_number(number: int, text: str):
     try:
         item = get_item_by_label_number(number)
         if type(item) == str: return item
-        # center_x = (item.bbox[0] + item.bbox[2]) / 2
-        # center_y = (item.bbox[1] + item.bbox[3]) / 2
-        # # Use JS to find the element at those coordinates
-        # element_handle = await page.evaluate_handle(
-        #     """([x, y]) => document.elementFromPoint(x, y)""",
-        #     [center_x, center_y],
-        # )
-        # if not element_handle:
-        #     return f"[❌] Error: No element found at ({center_x}, {center_y})"
-        # # Wrap it back into a Playwright ElementHandle
-        # element = element_handle.as_element()
-        # if element is None:
-        #     return f"[❌] Error: Element at ({center_x}, {center_y}) is not a valid input element"
-        # # Optional: check visibility
-        # if not await element.is_visible():
-        #     return f"[⚠️] Error: Element at ({center_x}, {center_y}) is not visible"
-
-        # OR (i.e., we need to test)
-
         # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
         center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
         center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
@@ -228,6 +168,16 @@ async def fill_all_text_boxes_with(text: str):
         return str(e)
 
 # @mcp.tool
+# async def set_location(latitude: float, longitude: float, accuracy: int = 0):
+#     global page
+#     print("In function call `set_location`...")
+#     await page._page.context.set_geolocation({
+#         "latitude": latitude,
+#         "longitude": longitude,
+#         "accuracy": accuracy,
+#     })
+
+# @mcp.tool
 # async def get_element_coordinates_by_text(text: str):
 #     global page
 #     print("In function call `get_element_coordinates_by_text`...")
@@ -241,15 +191,93 @@ async def fill_all_text_boxes_with(text: str):
 #     except Exception as e:
 #         return str(e)
 
-# @mcp.tool
-# async def set_location(latitude: float, longitude: float, accuracy: int = 0):
-#     global page
-#     print("In function call `set_location`...")
-#     await page._page.context.set_geolocation({
-#         "latitude": latitude,
-#         "longitude": longitude,
-#         "accuracy": accuracy,
-#     })
+#####################################################################
+### Tools required for integration, not necessarily given to LLM
+#####################################################################
+
+async def run_screenshot():
+    global page, MOST_RECENT_CLICK
+    # print("In function call `screenshot`...")
+    try:
+        path = shared.CURRENT_SCREENSHOT_PATH
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Take screenshot of only the visible viewport (not full_page)
+        # This ensures OmniParser labels match the visible area
+        await page._page.screenshot(path=path, full_page=False) # TODO: Check fullPage=True vs. False for scroll coordinates
+    except Exception as e:
+        return str(e)
+
+@mcp.tool
+async def screenshot():
+    global page, MOST_RECENT_CLICK
+    # print("In function call `screenshot`...")
+    try:
+        path = shared.CURRENT_SCREENSHOT_PATH
+        await run_screenshot()
+
+        # Add visual marker for the most recent click
+        if MOST_RECENT_CLICK is not None:
+            # MOST_RECENT_CLICK now stores absolute viewport coordinates (vx, vy)
+            # We need to convert to relative coordinates (0-1) for place_coordinate_on_image
+            viewport_width = page._page.viewport_size['width']
+            viewport_height = page._page.viewport_size['height']
+            relative_x = MOST_RECENT_CLICK[0] / viewport_width
+            relative_y = MOST_RECENT_CLICK[1] / viewport_height
+            cv2.imwrite(
+                path,
+                place_coordinate_on_image(
+                    cv2.imread(path),
+                    coordinate=(relative_x, relative_y),
+                    coordinate_system='relative'
+                )
+            )
+        return path
+    except Exception as e:
+        return str(e)
+
+@mcp.tool
+async def click_coordinates(x: float, y: float):
+    global page
+    # print("In function call `click_coordinates`...")
+    try:
+        await page.bring_to_front()
+        await page._page.mouse.move(x, y)
+        await page._page.mouse.click(x, y)
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
+        await run_screenshot()
+        return "success"
+    except Exception as e:
+        return str(e)
+    
+@mcp.tool
+async def click_relative_coordinates(x: float, y: float):
+    """Click an area by its relative coordinates (x,y) where x and y are both in the range [0.0, 1.0]"""
+    global page
+    # print("In function call `click_relative_coordinates`...")
+    try:
+        vx = x * page._page.viewport_size['width']
+        vy = y * page._page.viewport_size['height']
+        await page.bring_to_front()
+        await page._page.mouse.move(vx, vy)
+        await page._page.mouse.click(vx, vy)
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
+        await run_screenshot()
+        return "success"
+    except Exception as e:
+        return str(e)
+    
+@mcp.tool
+async def type_text_character_by_character(text_input: str):
+    global page
+    try:
+        await page._page.keyboard.type(text_input)
+        await run_screenshot()
+    except Exception as e:
+        return str(e)
+
+#####################################################################
+### Initialization
+#####################################################################
 
 async def init_globals():
     print("INSIDE INIT GLOBALS")
@@ -268,10 +296,8 @@ async def init_globals():
     stagehand = Stagehand(stagehand_config)
     await stagehand.init()
     page = stagehand.page
-
     # Set the browser geolocation
     await page._page.context.set_geolocation(BROWSER_GEOLOCATION)
-
     # Ensure we do not wait more than 5 seconds
     # for failing tool calls
     page._page.context.set_default_timeout(int(os.getenv("BROWSER_ACTION_TIMEOUT_MS", "5000")))

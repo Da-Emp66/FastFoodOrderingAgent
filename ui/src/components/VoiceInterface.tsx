@@ -19,6 +19,9 @@ import {
   Select,
   MenuItem,
   FormControl,
+  Switch,
+  styled,
+  Stack,
   // InputLabel
 } from '@mui/material';
 import {
@@ -52,6 +55,53 @@ interface ClickIndicator {
   y: number;
 }
 
+const AntSwitch = styled(Switch)(({ theme }) => ({
+  width: 28,
+  height: 16,
+  padding: 0,
+  display: 'flex',
+  '&:active': {
+    '& .MuiSwitch-thumb': {
+      width: 15,
+    },
+    '& .MuiSwitch-switchBase.Mui-checked': {
+      transform: 'translateX(9px)',
+    },
+  },
+  '& .MuiSwitch-switchBase': {
+    padding: 2,
+    '&.Mui-checked': {
+      transform: 'translateX(12px)',
+      color: '#fff',
+      '& + .MuiSwitch-track': {
+        opacity: 1,
+        backgroundColor: '#1890ff',
+        ...theme.applyStyles('dark', {
+          backgroundColor: '#177ddc',
+        }),
+      },
+    },
+  },
+  '& .MuiSwitch-thumb': {
+    boxShadow: '0 2px 4px 0 rgb(0 35 11 / 20%)',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    transition: theme.transitions.create(['width'], {
+      duration: 200,
+    }),
+  },
+  '& .MuiSwitch-track': {
+    borderRadius: 16 / 2,
+    opacity: 1,
+    backgroundColor: 'rgba(0,0,0,.25)',
+    boxSizing: 'border-box',
+    ...theme.applyStyles('dark', {
+      backgroundColor: 'rgba(255,255,255,.35)',
+    }),
+  },
+}));
+
 export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProps) {
   const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -73,6 +123,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
 
   // Detect if mobile based on screen width (simple check)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [view, setView] = useState('Mobile View');
 
   useEffect(() => {
     const handleResize = () => {
@@ -83,7 +134,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   }, []);
 
   // Ordering mode (GUI = AI agent, API = scripted ordering)
-  const [orderingMode, setOrderingMode] = useState<'GUI' | 'API-Wendys' | 'API-McDonalds'>('GUI');
+  const [orderingMode, setOrderingMode] = useState<'GUI-Browser-Use (BU)' | 'GUI-Base-Agent (GPT-4V)' | 'GUI-Base-Agent (MiniCPM-4.5)' | 'API'>('GUI-Browser-Use (BU)');
 
   // Get user's geolocation
   const { location: geolocation, error: geoError, loading: geoLoading } = useGeolocation();
@@ -409,27 +460,29 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
           justifyContent: 'center',
           alignItems: 'center',
           minHeight: '100vh',
-          padding: isMobile ? '0' : '20px'
+          padding: isMobile || view === 'Fullscreen' ? '0' : '20px',
+          overflow: 'hidden',
         }}
       >
         {/* Conditionally render phone bezel on desktop */}
         <Box
-          sx={!isMobile ? {
+          sx={!isMobile && view === 'Mobile View' ? {
             width: '100%',
-            maxWidth: '550px', // Increased from 430px for better demo visibility
-            minHeight: 'calc(100vh - 40px)',
+            maxWidth: '430px',
+            maxHeight: 'calc(100vh - 40px)',
             backgroundColor: '#1a1a1a',
             borderRadius: '50px',
             padding: '12px',
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-            position: 'relative'
+            overflow: 'hidden',
+            // position: 'fixed',
           } : {
             width: '100%',
             height: '100%'
           }}
         >
           {/* Phone Notch - Only on desktop */}
-          {!isMobile && (
+          {!isMobile && view === 'Mobile View' && (
             <Box
               sx={{
                 position: 'absolute',
@@ -447,21 +500,24 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
 
           {/* Phone Screen / Mobile Screen */}
           <Box
-            sx={!isMobile ? {
+            sx={!isMobile && view === 'Mobile View' ? {
               width: '100%',
               height: '100%',
-              minHeight: 'calc(100vh - 64px)',
+              maxHeight: 'calc(100vh - 64px)',
               backgroundColor: '#000',
               borderRadius: '40px',
               overflow: 'hidden',
               position: 'relative'
             } : {
-              width: '100%',
-              height: '100%',
-              minHeight: '100vh',
-              backgroundColor: '#000',
+              borderRadius: '40px',
+              left: '50%',
+              transform: 'translateX(-50%)',
               overflow: 'hidden',
-              position: 'relative'
+              position: 'relative',
+              width: 'min(800px, 100%)',
+              height: '100%',
+              // minHeight: '120vh',
+              // backgroundColor: '#000',
             }}
           >
             {expandedView ? (
@@ -574,7 +630,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
                   height: '100%',
                   padding: 0,
                   margin: 0,
-                  maxWidth: '100% !important'
+                  maxWidth: '100% !important',
                 }}
               >
                 <Box
@@ -590,7 +646,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
                   }}
                 >
         {/* Header */}
-        <Box sx={{ width: '100%', position: 'relative', py: 2, px: 2 }}>
+        <Box sx={{ width: '100%', position: 'relative', marginTop: '7px', py: 2, px: 2 }}>
           {/* Mode Selector - Top Left */}
           <Box sx={{ position: 'absolute', top: 8, left: 8 }}>
             <FormControl size="small">
@@ -613,20 +669,33 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
                 }}
                 renderValue={(value) => {
                   // Show only emoji in the closed dropdown
-                  if (value === 'GUI') return '🤖';
-                  if (value === 'API-Wendys') return '🍔';
-                  if (value === 'API-McDonalds') return '🍟';
+                  if (value === 'GUI-Browser-Use (BU)') return '🤖🥇';
+                  if (value === 'GUI-Base-Agent (GPT-4V)') return '🤖🥈';
+                  if (value === 'GUI-Base-Agent (MiniCPM-4.5)') return '🤖🥉';
+                  if (value === 'API') return '⚡🍔+🍟';
                   return '🤖';
                 }}
               >
-                <MenuItem value="GUI">🤖 GUI Mode</MenuItem>
-                <MenuItem value="API-Wendys">🍔 Wendy's API</MenuItem>
-                <MenuItem value="API-McDonalds">🍟 McDonald's API</MenuItem>
+                <MenuItem value="GUI-Browser-Use (BU)">🤖🥇 BU GUI Mode</MenuItem>
+                <MenuItem value="GUI-Base-Agent (GPT-4V)">🤖🥈 GPT GUI Mode</MenuItem>
+                <MenuItem value="GUI-Base-Agent (MiniCPM-4.5)">🤖🥉 MCPM GUI Mode</MenuItem>
+                <MenuItem value="API">⚡🍔+🍟 API (Wendy's only)</MenuItem>
               </Select>
             </FormControl>
           </Box>
+          {!isMobile && <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Typography sx={{ color: 'whitesmoke' }}>{view}</Typography>
+              <AntSwitch
+                defaultChecked
+                checked={view === 'Mobile View'}
+                onChange={() => setView(view === 'Fullscreen' ? 'Mobile View' : 'Fullscreen')}
+                inputProps={{ 'aria-label': 'ant design' }}
+              />
+            </Stack>
+          </Box>}
 
-          <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ marginTop: '18px', color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
             Fast Food Ordering Agent
           </Typography>
         </Box>
@@ -700,53 +769,68 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         </Collapse>
 
         {/* Messages Area */}
-        <Box sx={{ flex: 1, px: 2, pb: 2, width: '100%' }}>
-          {messages.map((message) => (
-            <Box
-              key={message.id}
-              sx={{
-                mb: 2,
-                display: 'flex',
-                justifyContent: message.isUser ? 'flex-end' : 'flex-start'
-              }}
-            >
-              <Paper
-                elevation={2}
+        <Box sx={{
+          flex: 1,
+          px: 2,
+          pb: 2,
+          width: '100%',
+        }}>
+          <Box sx={{
+            maxHeight: showScreenshot ? '25vh' : '55vh',
+            overflow: 'scroll',
+            msOverflowStyle: 'none',
+            scrollbarWidth: 'none',
+            overflowY: 'scroll',
+            '&::-webkit-scrollbar': {
+              display: 'none', // hides scrollbar in WebKit browsers
+            }
+          }}>
+            {messages.map((message) => (
+              <Box
+                key={message.id}
                 sx={{
-                  p: 2,
-                  maxWidth: '80%',
-                  borderRadius: 3,
-                  backgroundColor: message.isUser ? '#2196f3' : 'white',
-                  color: message.isUser ? 'white' : '#333'
-                }}
-              >
-                <Typography variant="body1">
-                  {message.text}
-                </Typography>
-              </Paper>
-            </Box>
-          ))}
-
-          {isLoadingResponse && (
-            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-start' }}>
-              <Paper
-                elevation={2}
-                sx={{
-                  p: 2,
-                  borderRadius: 3,
-                  backgroundColor: 'white',
+                  mb: 2,
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 1
+                  justifyContent: message.isUser ? 'flex-end' : 'flex-start',
                 }}
               >
-                <CircularProgress size={20} />
-                <Typography variant="body2" sx={{ color: '#666' }}>
-                  Thinking...
-                </Typography>
-              </Paper>
-            </Box>
-          )}
+                <Paper
+                  elevation={2}
+                  sx={{
+                    p: 2,
+                    maxWidth: '80%',
+                    borderRadius: 3,
+                    backgroundColor: message.isUser ? '#2196f3' : 'white',
+                    color: message.isUser ? 'white' : '#333'
+                  }}
+                >
+                  <Typography variant="body1">
+                    {message.text}
+                  </Typography>
+                </Paper>
+              </Box>
+            ))}
+            {isLoadingResponse && (
+              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-start' }}>
+                <Paper
+                  elevation={2}
+                  sx={{
+                    p: 2,
+                    borderRadius: 3,
+                    backgroundColor: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1
+                  }}
+                >
+                  <CircularProgress size={20} />
+                  <Typography variant="body2" sx={{ color: '#666' }}>
+                    Thinking...
+                  </Typography>
+                </Paper>
+              </Box>
+            )}
+          </Box>
 
           {currentInput && (
             <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
@@ -768,6 +852,9 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
             onSubmit={handleTextSubmit}
             elevation={2}
             sx={{
+              // position: 'fixed',
+              // bottom: '150px',
+              // width: view === 'Fullscreen' ? '660px' : '300px',
               display: 'flex',
               alignItems: 'center',
               borderRadius: 3,
@@ -809,10 +896,12 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         {/* Voice Input and Screenshot Buttons */}
         <Box
           sx={{
+            // position: 'fixed',
+            // bottom: '20px',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            gap: 3,
+            gap: 7,
             pb: 4
           }}
         >
