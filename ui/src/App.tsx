@@ -3,7 +3,7 @@ import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import SignIn from './components/SignIn';
 import HungryInput from './components/HungryInput';
 import VoiceInterface from './components/VoiceInterface';
-import TTS from './components/TTS'; 
+// import TTS from './components/TTS'; 
 
 type AppState = "signin" | "hungry" | "voice";
 
@@ -63,11 +63,11 @@ function App() {
       {renderCurrentScreen()}
 
       {/* ✅ Optional: render manual TTS controls below the main UI */}
-      {currentState === 'voice' && (
+      {/* {currentState === 'voice' && (
         <div style={{ marginTop: '2rem' }}>
           <TTS />
         </div>
-      )}
+      )} */}
     </ThemeProvider>
   );
 }

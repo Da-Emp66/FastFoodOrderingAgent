@@ -1,5 +1,6 @@
 # Use GitHub Container Registry mirror to avoid Docker Hub rate limits
-FROM ghcr.io/nodejs/node:22-alpine
+# FROM ghcr.io/nodejs/node:22-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -15,6 +16,6 @@ COPY . .
 # Build the application
 RUN npm run build
 
-EXPOSE 4173
+EXPOSE 3000
 
 CMD [ "npm", "run", "serve" ]

@@ -3,7 +3,7 @@ services:
     container_name: fastfoodordering-ui-${INSTANCE_ID:-default}
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     env_file:
       - ../.env
     # Remove external port exposure - only accessible through nginx

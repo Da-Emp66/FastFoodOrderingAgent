@@ -19,9 +19,18 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  // InputLabel
 } from '@mui/material';
-import { Mic, MicOff, Send, Videocam, VideocamOff, Fullscreen, Close, FullscreenExit } from '@mui/icons-material';
+import {
+  Mic,
+  MicOff,
+  Send,
+  Videocam,
+  VideocamOff,
+  Fullscreen,
+  FullscreenExit,
+  // Close
+} from '@mui/icons-material';
 import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick, sendBrowserType } from '../services/api';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
