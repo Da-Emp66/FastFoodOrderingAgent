@@ -61,6 +61,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   const currentBotIdRef = useRef<string | null>(null);
   const botBufferRef = useRef<string>("");   // accumulates raw chunks
   const isStreamingRef = useRef<boolean>(false);
+  const endTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [log, setLog] = useState<string[]>([]);
   const [wsReady, setWsReady] = useState(false);
@@ -116,6 +117,40 @@ const handleSendMessage = (text: string) => {
   sendWsMessage(text);
 };
 
+const forceEndMessage = () => {
+  const botId = currentBotIdRef.current;
+  if (!botId) return;
+
+  console.warn("⚠️ FORCE END TRIGGERED (timeout)");
+
+  setIsLoadingResponse(false);
+
+  // Mark bubble complete
+  setMessages(prev =>
+    prev.map(m =>
+      m.id === botId ? { ...m, isComplete: true } : m
+    )
+  );
+
+  const finalText = botBufferRef.current.trim();
+  console.log("[TTS FINAL FORCED]:", finalText);
+
+  if (finalText.length > 0) {
+    if (recognitionRef.current) recognitionRef.current.stop();
+    speak(finalText);
+  }
+
+  // Reset all state
+  botBufferRef.current = "";
+  currentBotIdRef.current = null;
+  isStreamingRef.current = false;
+
+  // Clear timeout
+  if (endTimeoutRef.current) {
+    clearTimeout(endTimeoutRef.current);
+    endTimeoutRef.current = null;
+  }
+};
 
 
   // Handle initial query - wait for geolocation to load first
@@ -335,6 +370,12 @@ useEffect(() => {
     // END OF BOT MESSAGE
     // =========================================
     if (chunk === "[[END]]") {
+      // stop timeout
+      if (endTimeoutRef.current) {
+        clearTimeout(endTimeoutRef.current);
+        endTimeoutRef.current = null;
+      }
+
       setIsLoadingResponse(false);
 
       const botId = currentBotIdRef.current;
@@ -347,7 +388,6 @@ useEffect(() => {
         )
       );
 
-      // Speak final accumulated text
       const finalText = botBufferRef.current.trim();
       console.log("[TTS FINAL]:", finalText);
 
@@ -356,25 +396,24 @@ useEffect(() => {
         speak(finalText);
       }
 
-      // Reset state
+      // Reset
       botBufferRef.current = "";
       currentBotIdRef.current = null;
       isStreamingRef.current = false;
       return;
     }
 
+
     // =========================================
     // FIRST TOKEN ARRIVES → CREATE BUBBLE
-    // =========================================
     if (!currentBotIdRef.current) {
       const botId = "bot-" + Date.now();
       currentBotIdRef.current = botId;
       isStreamingRef.current = true;
 
-      // Hide Thinking…
       setIsLoadingResponse(false);
 
-      // Create bot bubble
+      // Create new bubble
       setMessages(prev => [
         ...prev,
         {
@@ -385,7 +424,14 @@ useEffect(() => {
           timestamp: new Date()
         }
       ]);
+
+      // START TIMEOUT: 5 seconds
+      if (endTimeoutRef.current) clearTimeout(endTimeoutRef.current);
+      endTimeoutRef.current = setTimeout(() => {
+        forceEndMessage();
+      }, 5000); // 5 seconds
     }
+
 
     // =========================================
     // STREAMING APPEND
