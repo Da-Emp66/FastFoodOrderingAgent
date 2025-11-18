@@ -7,8 +7,8 @@ import cv2
 from fastmcp import FastMCP
 from stagehand import Stagehand, StagehandConfig, StagehandPage
 
-from core.web.agent import ParsedItemDetails
 from core.utils import place_coordinate_on_image
+from core.web.parser import get_item_by_label_number
 import shared
 
 # Default browser geolocation is Orlando
@@ -58,7 +58,7 @@ async def screenshot():
 @mcp.tool
 async def navigate(url: str):
     global page
-    # print("In function call `navigate`...")
+    print("In function call `navigate`...")
     try:
         await page.goto(url)
         await page._page.context.grant_permissions(["geolocation"])
@@ -122,19 +122,13 @@ async def click_element_by_box_label_number(number: int):
     # print("In function call `click_by_box_label_number`...")
 
     try:
-        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH): return "[❌] Error: There are no labeled boxes."
-        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
-        if current_image_parse_metadata is None: return "[❌] Error: Image parse metadata is `null`. Try again."
-        if len(current_image_parse_metadata) <= number:
-            return f"[❌] Error: There is no box labeled by number {number}."
-        item = current_image_parse_metadata[number]
-        item = ParsedItemDetails.model_validate_json(item)
+        item = get_item_by_label_number(number)
+        if type(item) == str: return item
         # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
         center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
         center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
-
-        await page.wait_for_load_state("domcontentloaded")
-
+        # await page.wait_for_load_state("domcontentloaded")
+        
         # Convert relative coordinates to absolute viewport coordinates
         # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
         vx = center_x_relative * page._page.viewport_size['width']
@@ -159,28 +153,36 @@ async def type_text_by_box_label_number(number: int, text: str):
     """
     global page, MOST_RECENT_CLICK
     # print("In function call `type_text_by_box_label_number`...")
-
+    
     try:
-        if not os.path.exists(shared.CURRENT_IMAGE_PARSE_METADATA_PATH):
-            return "[❌] Error: There are no labeled boxes."
-        current_image_parse_metadata = json.loads(open(shared.CURRENT_IMAGE_PARSE_METADATA_PATH).read())
-        if current_image_parse_metadata is None:
-            return "[❌] Error: Image parse metadata is `null`. Try again."
-        if len(current_image_parse_metadata) <= number:
-            return f"[❌] Error: There is no box labeled by number {number}."
+        item = get_item_by_label_number(number)
+        if type(item) == str: return item
+        # center_x = (item.bbox[0] + item.bbox[2]) / 2
+        # center_y = (item.bbox[1] + item.bbox[3]) / 2
+        # # Use JS to find the element at those coordinates
+        # element_handle = await page.evaluate_handle(
+        #     """([x, y]) => document.elementFromPoint(x, y)""",
+        #     [center_x, center_y],
+        # )
+        # if not element_handle:
+        #     return f"[❌] Error: No element found at ({center_x}, {center_y})"
+        # # Wrap it back into a Playwright ElementHandle
+        # element = element_handle.as_element()
+        # if element is None:
+        #     return f"[❌] Error: Element at ({center_x}, {center_y}) is not a valid input element"
+        # # Optional: check visibility
+        # if not await element.is_visible():
+        #     return f"[⚠️] Error: Element at ({center_x}, {center_y}) is not visible"
 
-        item = current_image_parse_metadata[number]
-        item = ParsedItemDetails.model_validate_json(item)
+        # OR (i.e., we need to test)
 
         # Calculate center of bounding box (bbox is in xyxy format with relative coordinates 0-1)
         center_x_relative = (item.bbox[0] + item.bbox[2]) / 2
         center_y_relative = (item.bbox[1] + item.bbox[3]) / 2
-
         # Convert relative coordinates to absolute viewport coordinates
         # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
         vx = center_x_relative * page._page.viewport_size['width']
         vy = center_y_relative * page._page.viewport_size['height']
-
         # Use JS to find the element at those coordinates
         element_handle = await page.evaluate_handle(
             """([x, y]) => document.elementFromPoint(x, y)""",
@@ -188,26 +190,21 @@ async def type_text_by_box_label_number(number: int, text: str):
         )
         if not element_handle:
             return f"[❌] Error: No element found at viewport ({vx:.1f}, {vy:.1f})"
-
         # Wrap it back into a Playwright ElementHandle
         element = element_handle.as_element()
         if element is None:
             return f"[❌] Error: Element at viewport ({vx:.1f}, {vy:.1f}) is not a valid input element"
-
         # Optional: check visibility
         if not await element.is_visible():
             return f"[⚠️] Error: Element at viewport ({vx:.1f}, {vy:.1f}) is not visible"
-
         # Fill the element
         await element.click()
         await element.fill(text)
         await element.press("Enter")
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
-
         # Store absolute click coordinates for visual feedback
         bbox = await element.bounding_box()
         MOST_RECENT_CLICK = (bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2)
-
         return f"[✅] Success: Filled element labeled {number} at viewport ({vx:.1f}, {vy:.1f}) with text: {text}"
     except Exception as e:
         return f"[❌] Error: {str(e)}"
@@ -254,11 +251,8 @@ async def fill_all_text_boxes_with(text: str):
 #         "accuracy": accuracy,
 #     })
 
-# @mcp.tool
-# async def find(description_of_thing_to_click_on: str):
-#     pass
-
-async def main():
+async def init_globals():
+    print("INSIDE INIT GLOBALS")
     # Initialize StageHand webpage
     global page
     stagehand_config = StagehandConfig(
@@ -266,7 +260,8 @@ async def main():
         model_name=os.getenv("MODEL_NAME"),
         model_api_key=os.getenv("OPENAI_API_KEY"),
         local_browser_launch_options={
-            "headless": True,
+            # "headless": True, # For production Docker
+            "headless": False, # For local testing
             "ignoreDefaultArgs": ['--hide-scrollbars'],
         }
     )
@@ -279,8 +274,11 @@ async def main():
 
     # Ensure we do not wait more than 5 seconds
     # for failing tool calls
-    page._page.context.set_default_timeout(5000)
+    page._page.context.set_default_timeout(int(os.getenv("BROWSER_ACTION_TIMEOUT_MS", "5000")))
+    print("INIT GLOBALS COMPLETE")
 
+async def main():
+    await init_globals()
     # Run the MCP server
     await mcp.run_async()
 

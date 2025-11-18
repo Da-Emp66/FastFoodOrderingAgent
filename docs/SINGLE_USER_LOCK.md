@@ -1,8 +1,18 @@
 # Single User Per Instance Lock
 
-## Overview
+## ⚠️ DEPRECATED - FEATURE REMOVED
 
-Each instance of the FastFoodOrderingAgent now enforces a **single active user** at a time to prevent resource conflicts and ensure optimal performance.
+**Note: The single-user lock feature has been removed from the codebase.**
+
+This document is kept for historical reference only. The system now supports **multiple concurrent users** per instance without any locking mechanism.
+
+---
+
+## Previous Overview (No Longer Applicable)
+
+~~Each instance of the FastFoodOrderingAgent enforced a **single active user** at a time to prevent resource conflicts and ensure optimal performance.~~
+
+The single-user lock has been removed to allow better scalability and concurrent access.
 
 ## How It Works
 

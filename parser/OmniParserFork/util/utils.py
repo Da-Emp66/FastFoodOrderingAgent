@@ -1,10 +1,12 @@
 # from ultralytics import YOLO
+from distutils.util import strtobool
 import os
 import io
 import base64
 import time
 from PIL import Image, ImageDraw, ImageFont
 import json
+from pydantic import BaseModel
 import requests
 # utility function
 import os
@@ -425,6 +427,13 @@ def int_box_area(box, w, h):
     area = (int_box[2] - int_box[0]) * (int_box[3] - int_box[1])
     return area
 
+class FilterConfig(BaseModel):
+    only_interactive_elements: bool = bool(strtobool(os.getenv("FILTER_NONINTERACTIVE_ELEMENTS", "false").lower()))
+    """If `true`, non-interactive elements will be filtered and only interactive elements will be returned and shown."""
+    banned_regions: List[List[float]] = []
+    """List of bboxes in xyxy format to filter out if detected."""
+    iou_threshold: float = 0.7
+
 def get_som_labeled_img(
     image_source: Union[str, Image.Image],
     model=None,
@@ -442,6 +451,7 @@ def get_som_labeled_img(
     scale_img=False,
     imgsz=None,
     batch_size=128,
+    filter_config=FilterConfig(),
 ):
     """Process either an image path or Image object
     
@@ -470,12 +480,24 @@ def get_som_labeled_img(
         ocr_bbox = None
         return None, None, None
 
-    ocr_bbox_elem = [{'type': 'text', 'bbox':box, 'interactivity':False, 'content':txt, 'source': 'box_ocr_content_ocr'} for box, txt in zip(ocr_bbox, ocr_text) if int_box_area(box, w, h) > 0] 
-    xyxy_elem = [{'type': 'icon', 'bbox':box, 'interactivity':True, 'content':None} for box in xyxy.tolist() if int_box_area(box, w, h) > 0]
-    filtered_boxes = remove_overlap_new(boxes=xyxy_elem, iou_threshold=iou_threshold, ocr_bbox=ocr_bbox_elem)
+    ocr_bbox_elem = [{'type': 'text', 'bbox': box, 'interactivity': False, 'content': txt, 'source': 'box_ocr_content_ocr'} for box, txt in zip(ocr_bbox, ocr_text) if int_box_area(box, w, h) > 0] 
+    xyxy_elem = [{'type': 'icon', 'bbox': box, 'interactivity': True, 'content': None} for box in xyxy.tolist() if int_box_area(box, w, h) > 0]
+    if filter_config is None:
+        filtered_boxes = remove_overlap_new(boxes=xyxy_elem, iou_threshold=iou_threshold, ocr_bbox=ocr_bbox_elem)
+    else:
+        filtered_boxes = xyxy_elem
     
     # sort the filtered_boxes so that the one with 'content': None is at the end, and get the index of the first 'content': None
     filtered_boxes_elem = sorted(filtered_boxes, key=lambda x: x['content'] is None)
+    
+    # filter the elements if enabled
+    if filter_config is not None:
+        if filter_config.only_interactive_elements:
+            filtered_boxes_elem = list(filter(lambda elem: elem.get('interactivity', True) == True, filtered_boxes_elem))
+        if len(filter_config.banned_regions) > 0:
+            filtered_boxes_elem = remove_overlap_new(boxes=filtered_boxes_elem, iou_threshold=filter_config.iou_threshold, ocr_bbox=filter_config.banned_regions)
+            # filtered_boxes_elem = list(filter(lambda xyxy_elem: not overlapping(box=xyxy_elem['bbox'], banned=filter_config.banned_regions, iou_threshold=filter_config.iou_threshold), filtered_boxes_elem))
+
     # get the index of the first 'content': None
     starting_idx = next((i for i, box in enumerate(filtered_boxes_elem) if box['content'] is None), -1)
     filtered_boxes = torch.tensor([box['bbox'] for box in filtered_boxes_elem])

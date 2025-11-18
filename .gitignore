@@ -213,6 +213,7 @@ google-chrome-stable_current_amd64.deb
 scripts/internal/
 scripts/models/
 models/
+parser/OmniParserFork/
 
 # MacOS-specific files
 .DS_Store

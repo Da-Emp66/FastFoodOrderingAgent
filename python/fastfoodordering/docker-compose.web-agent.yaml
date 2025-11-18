@@ -16,3 +16,5 @@ services:
       - OPENAI_BASE_URL=http://host.docker.internal:8000
     extra_hosts:
       - host.docker.internal:host-gateway
+    restart: always
+    

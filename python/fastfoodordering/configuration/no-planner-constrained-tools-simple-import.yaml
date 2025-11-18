@@ -5,8 +5,8 @@ tools:
       import_spec: core/web/toolserver.py
     - function_name: navigate
       import_spec: core/web/toolserver.py
-    # - function_name: scroll
-    #   import_spec: core/web/toolserver.py
+    - function_name: scroll
+      import_spec: core/web/toolserver.py
     - function_name: click_element_by_its_text_content
       import_spec: core/web/toolserver.py
     - function_name: click_element_by_box_label_number
@@ -25,6 +25,21 @@ tools:
   browser_visibility:
     screenshot_tool_name: screenshot
     # snapshot_tool_name: browser_snapshot,
+    tool_specific_prompt_additions:
+      navigate: |
+        Known URLs:
+          - McDonald's: https://www.mcdonalds.com/us/en-us.html
+          - Burger King: https://www.bk.com
+          - Wendy's: https://order.wendys.com/location-selection?lang=en_US
+          - Chick-fil-a: https://www.chick-fil-a.com/
+          - Arby's: https://www.arbys.com/
+          - Taco Bell: https://www.tacobell.com/
+          - Checkers and Rally's: https://checkersandrallys.com/
+          - Popeyes: https://www.popeyes.com/
+          - Domino's Pizza: https://www.dominos.com/en
+          - Papa John's: https://www.papajohns.com/
+          - Pizza Hut: https://www.pizzahut.com/
+          - Hungry Howie's: https://www.hungryhowies.com/
   tool_system_prompt: |
     You are an expert browser operator. Your goal is to select the best tool based on the current task. 
   tool_selection_user_prompt_format: |
@@ -35,7 +50,7 @@ tools:
 
     Banned Tools: {banned_tools}
     
-    Notes: If asked to go to a url, use 'navigate', not a 'click' tool.
+    Notes: If asked to go to a url, use 'navigate', not a 'click' tool. Prefer box number-based tools, but use the other tools like clicking by text content when box tools are not working.
     
   tool_args_user_prompt_format: |
     Overall Goal: {overall_goal}
@@ -43,15 +58,9 @@ tools:
     Banned Tools: {banned_tools}
     Selected tool is {name}. Now determine the arguments:
 
-planner_type: dspy
 planner:
-  visibility_settings:
-    tools_visible: True
+  disable: True
 browser_visibility_mode: ${BROWSER_VISIBILITY_MODE}
 parser:
   parser_uri: http://${PARSER_HOST}:${PARSER_PORT}
   parser_mode: ${PARSER_MODE}
-
-image_resize_configuration:
-  scale_x: 1.0
-  scale_y: 1.0

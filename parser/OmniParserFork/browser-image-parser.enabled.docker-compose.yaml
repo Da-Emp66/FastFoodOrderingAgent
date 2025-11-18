@@ -1,12 +1,14 @@
 services:
   fastfood-browserimageparser:
-    container_name: fastfood-browserimageparser
+    container_name: fastfood-browserimageparser-${INSTANCE_ID:-default}
     image: fastfood-browserimageparser:latest
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - ${PARSER_PORT:-8055}:${PARSER_PORT:-8055}
+      - ${PARSER_PORT}:${PARSER_PORT}
+    expose:
+      - "${PARSER_PORT:-8055}"
     volumes:
       - ./weights:/app/weights
       - ${HOME}/.paddleocr:/root/.paddleocr
@@ -16,6 +18,8 @@ services:
       DEVICE: ${PARSER_DEVICE:-cpu}
       USE_LOCAL_SEMANTICS: false
       ANNOTATION_SCALE_FACTOR: 4
+      FILTER_NONINTERACTIVE_ELEMENTS: false
+    restart: always
     deploy:
       resources:
         reservations:

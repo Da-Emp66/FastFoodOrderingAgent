@@ -1,4 +1,5 @@
 import abc
+import asyncio
 import base64
 from dataclasses import dataclass
 import functools
@@ -10,13 +11,17 @@ import os
 from pathlib import Path
 import re
 import socket
+import sys
 from tempfile import NamedTemporaryFile
+import traceback
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import warnings
 import cv2
+import numpy as np
 import typing_extensions
 from box import Box
 import dspy
+from fastmcp.tools.tool import FunctionTool as FastMCPFunctionTool
 from guidance import (
     json as generate_constrained_json,
     user as guidance_user,
@@ -121,9 +126,32 @@ def populate_environment_specifications(spec: Union[str, Dict[str, Any]], **kwar
     else:
         return spec
 
+MESSAGE_SPECIAL_TOKEN_PATTERN = re.compile(r"\<(?:\\|\||\w|\_|\d)*\>")
 def extract_final_message_content(response: str):
     """Returns only the final response, with all proper thinking tokens and sections removed."""
-    return response.split("|>")[-1]
+    return re.split(MESSAGE_SPECIAL_TOKEN_PATTERN, response)[-1]
+
+def remove_special_characters(original_string: str) -> str:
+    return re.sub(r'[^A-Za-z0-9]', '', original_string)
+
+def sanitize_container_name(name: str) -> str:
+    """
+    Sanitize a string to make it a valid Docker container name.
+    Docker container names must match the pattern: [a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    This function:
+    - Replaces @ and other invalid characters with hyphens
+    - Ensures the name starts with alphanumeric character
+    - Preserves only valid characters: letters, numbers, underscores, dots, and hyphens
+    """
+    # Replace @ and other invalid characters with hyphens
+    sanitized = re.sub(r'[^a-zA-Z0-9_.-]', '-', name)
+    
+    # Ensure it starts with alphanumeric character
+    if sanitized and not sanitized[0].isalnum():
+        sanitized = 'c' + sanitized
+    
+    return sanitized
 
 
 class BaseModelJSONEncoder(json.JSONEncoder):
@@ -142,11 +170,17 @@ class CustomToolSpecification(BaseModel):
     import_spec: Optional[str] = None
     """The filepath to the file the function is defined in."""
 
-LocalToolSpec = Union[str, CustomToolSpecification, Callable]
+LocalToolSpec = Union[str, CustomToolSpecification, Callable, FastMCPFunctionTool]
+
+class ToolImportHook(BaseModel):
+    spec: LocalToolSpec
+    args: List[Any] = []
+    kwargs: Dict[str, Any] = {}
 
 class MCPUserConfiguration(BaseModel):
     mcp_servers: Dict[str, StdioServerParameters] = {}
     custom_tools: List[LocalToolSpec] = []
+    import_hooks: List[ToolImportHook] = []
 
 class ApplicationConfiguration(BaseModel):
     agents: Dict[str, Any]
@@ -161,7 +195,7 @@ class McpToolFunctionWrapper:
 
 async def null_function():
     """The function that gets called when the model chooses not to call a function."""
-    return
+    return "{}"
 
 def find_or_return_function(function_spec: LocalToolSpec):
     if type(function_spec) == str:
@@ -173,9 +207,14 @@ def find_or_return_function(function_spec: LocalToolSpec):
         filepath = function_spec.import_spec
         if function_name is None: return null_function
         if function_spec.import_spec is not None:
-            spec = importlib.util.spec_from_file_location("dynamic_module", filepath)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            module_name = f"dynamic_{os.path.basename(filepath).replace('.py', '')}"
+            if module_name in sys.modules:
+                module = sys.modules[module_name]
+            else:
+                spec = importlib.util.spec_from_file_location(module_name, filepath)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
             if hasattr(module, function_name):
                 return getattr(module, function_name)
             else:
@@ -183,7 +222,7 @@ def find_or_return_function(function_spec: LocalToolSpec):
         else:
             if function_name in globals():
                 try:
-                    return callable(globals().get(function_name))
+                    return globals().get(function_name)
                 except Exception as e:
                     NotImplementedError(
                         f"Tool with name `{function_name}` exists but is not callable. "
@@ -194,6 +233,8 @@ def find_or_return_function(function_spec: LocalToolSpec):
                     f"Function name {function_name} not defined in `globals()`. "
                     "Did you mean to pass an `import_spec` to the filepath where that function is defined in your `CustomToolSpecification`?"
                 )
+    elif isinstance(function_spec, FastMCPFunctionTool):
+        return function_spec.fn
     else:
         raise NotImplementedError(f"Function specification of type `{type(function_spec)}` not yet supported.")
 
@@ -390,6 +431,9 @@ class ConstrainedToolCaller(ToolCaller):
         for _session_name, session in self.mcp_sessions.items():
             session_tools = (await session.list_tools()).tools
             tools.update({tool.name: McpToolFunctionWrapper(tool=tool, session=session) for tool in session_tools})
+        for import_hook in self.configuration.import_hooks:
+            hook = find_or_return_function(import_hook.spec)
+            await hook(*import_hook.args, **import_hook.kwargs)
         for tool in self.configuration.custom_tools:
             tool = find_or_return_function(tool)
             if hasattr(tool, "__name__"):
@@ -405,59 +449,87 @@ class ConstrainedToolCaller(ToolCaller):
             self.lm += self.configuration.tool_system_prompt \
                 .replace("{tool_options}", yaml.safe_dump(tool_options))
 
-    async def determine_tool(self, **kwargs) -> GeneratedTool:
-        tool_options = list(self.tools.keys())
-        with guidance_user():
-            user_prompt = self.configuration.tool_selection_user_prompt_format \
-                .replace("{tool_options}", yaml.safe_dump(tool_options))
-            for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
-            self.lm += user_prompt
-        name = None
-        with guidance_assistant():
-            self.lm += generate_constrained_json(name='tool_name_json', schema={
-                    'properties': {
-                        'tool_name': {
-                            'enum': list(self.tools.keys()),
-                            'title': 'Tool Name',
-                            'type': 'string'
-                        }
-                    },
-                    'required': ['tool_name'],
-                    'title': 'ToolName',
-                    'type': 'object',
-                },
-                temperature=self.configuration.tool_generation_params.temperature,
-                # logit_bias=logit_bias,
-            )
-            name = json.loads(self.lm["tool_name_json"])["tool_name"]
-        with guidance_user():
-            user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
-            for key, val in kwargs.items(): user_prompt = user_prompt.replace(key, str(val))
-            self.lm += user_prompt
-        with guidance_assistant():
-            if name in self.tools:
-                selected_tool = self.tools[name]
-                print(selected_tool.tool.inputSchema)
-                self.lm += generate_constrained_json(
-                    name="generated_args",
-                    schema=selected_tool.tool.inputSchema,
-                    temperature=self.configuration.tool_generation_params.temperature,
-                )
-                args = json.loads(self.lm["generated_args"])
-                selected_tool_representation = str({"tool": name, "args": args})
-                print(selected_tool_representation)
+    async def determine_tool(self, skip_args: bool = False, **kwargs) -> GeneratedTool:
+        success = False
+        while not success:
+            try:
+                tool_options = list(self.tools.keys())
+                with guidance_user():
+                    user_prompt = self.configuration.tool_selection_user_prompt_format \
+                        .replace("{tool_options}", yaml.safe_dump(tool_options))
+                    user_prompt = self.format_prompt_string_with_arguments(user_prompt, kwargs)
+                    self.lm += user_prompt
+                name = None
+                with guidance_assistant():
+                    self.lm += generate_constrained_json(name='tool_name_json', schema={
+                            'properties': {
+                                'tool_name': {
+                                    'enum': list(self.tools.keys()),
+                                    'title': 'Tool Name',
+                                    'type': 'string'
+                                }
+                            },
+                            'required': ['tool_name'],
+                            'title': 'ToolName',
+                            'type': 'object',
+                        },
+                        temperature=self.configuration.tool_generation_params.temperature,
+                        # logit_bias=logit_bias,
+                    )
+                    name = json.loads(self.lm["tool_name_json"])["tool_name"]
+                    if skip_args and name in self.tools:
+                        return GeneratedTool(usable=self.tools[name], spec=GeneratedToolSpec(tool=name, args={}))
+                with guidance_user():
+                    user_prompt = self.configuration.tool_args_user_prompt_format.replace("{name}", name)
+                    user_prompt = self.format_prompt_string_with_arguments(user_prompt, kwargs)
+                    self.lm += user_prompt
+                with guidance_assistant():
+                    if name in self.tools:
+                        selected_tool = self.tools[name]
+                        print(selected_tool.tool.inputSchema)
+                        self.lm += generate_constrained_json(
+                            name="generated_args",
+                            schema=selected_tool.tool.inputSchema,
+                            temperature=self.configuration.tool_generation_params.temperature,
+                        )
+                        args = json.loads(self.lm["generated_args"])
+                        selected_tool_representation = str({"tool": name, "args": args})
+                        print(selected_tool_representation)
+                    else:
+                        raise ValueError(f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}")
+                    
+                    return GeneratedTool(
+                        usable=selected_tool,
+                        spec=GeneratedToolSpec(
+                            tool=name,
+                            args=args,
+                        )
+                    )
+            except Exception as e:
+                print(traceback.format_exc())
+                print(f"Encountered exception when determining tool for constrained generation: {str(e)}")
+                print("Retrying in 5 seconds...")
+                asyncio.sleep(5)
+                print("Retrying...")
+    
+    def format_prompt_string_with_arguments(self, prompt: str, kwargs: Dict[str, Any]):
+        for key, val in kwargs.items(): 
+            # Convert value to string, handling Pydantic models and None specially
+            if val is None:
+                val_str = "null"
+            elif isinstance(val, BaseModel):
+                val_str = val.model_dump_json()
             else:
-                raise ValueError(f"Tool {name} is not valid. Please select from the list of valid tools: {list(self.tools.keys())}")
-            
-            return GeneratedTool(
-                usable=selected_tool,
-                spec=GeneratedToolSpec(
-                    tool=name,
-                    args=args,
-                )
-            )
+                val_str = str(val)
+            prompt = prompt.replace(f"{{{key}}}", val_str)
+        return prompt
 
+class History(BaseModel):
+    messages: List[Dict[str, Any]] = []
 
+#########################################################
+### Image
+#########################################################
 
 class VisibleDotCoordinateOptions(BaseModel):
     radius: int = 10
@@ -519,3 +591,69 @@ def place_coordinate_on_image(
         print("Unsupported coordinate options. Failed to place coordinates on image.")
         return image_with_coordinate_embed
     return image_with_coordinate_embed
+
+class AbsolutePixelwiseSize(BaseModel):
+    width: int
+    height: int
+
+class Relative2DScale(BaseModel):
+    scale_x: float = 0.7
+    scale_y: float = 0.7
+
+ImageResizeConfiguration = Union[AbsolutePixelwiseSize, Relative2DScale]
+
+def resize_cv2_image(image: cv2.typing.MatLike, params: ImageResizeConfiguration):
+    if isinstance(params, Relative2DScale):
+        image = cv2.resize(image, None, fx=params.scale_x, fy=params.scale_y, interpolation=cv2.INTER_LINEAR)
+    elif isinstance(params, AbsolutePixelwiseSize):
+        image = cv2.resize(image, (params.width, params.height), interpolation=cv2.INTER_LINEAR)
+    return image
+
+def cv2_image_to_base64(image: cv2.typing.MatLike, file_type='.jpg') -> str:
+    _, buffer = cv2.imencode(file_type, image)
+    return base64.b64encode(buffer).decode('utf-8')
+
+def create_black_image(width=256, height=256, channels=1) -> cv2.typing.MatLike:
+    """
+    Create an all-black image using OpenCV and NumPy.
+
+    Args:
+        width (int): Width of the image in pixels.
+        height (int): Height of the image in pixels.
+        channels (int): Number of color channels (1=grayscale, 3=RGB/BGR).
+
+    Returns:
+        np.ndarray: Black image array.
+    """
+    # Validate inputs
+    if not (isinstance(width, int) and isinstance(height, int) and isinstance(channels, int)):
+        raise ValueError("Width, height, and channels must be integers.")
+    if width <= 0 or height <= 0:
+        raise ValueError("Width and height must be positive integers.")
+    if channels not in (1, 3, 4):
+        raise ValueError("Channels must be 1 (grayscale), 3 (BGR), or 4 (BGRA).")
+    # Create a black image (all zeros)
+    black_img = np.zeros((height, width, channels), dtype=np.uint8)
+    return black_img
+
+def present_or_black(image: Optional[cv2.typing.MatLike] = None) -> cv2.typing.MatLike:
+    return image if image is not None else create_black_image()
+
+def IoU(boxA: List[float], boxB: List[float]):
+    # Unpack coordinates
+    xA1, yA1, xA2, yA2 = tuple(boxA)
+    xB1, yB1, xB2, yB2 = tuple(boxB)
+    # Compute intersection
+    x_left = max(xA1, xB1)
+    y_top = max(yA1, yB1)
+    x_right = min(xA2, xB2)
+    y_bottom = min(yA2, yB2)
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0  # No overlap
+    intersection = (x_right - x_left) * (y_bottom - y_top)
+    # Compute areas
+    areaA = (xA2 - xA1) * (yA2 - yA1)
+    areaB = (xB2 - xB1) * (yB2 - yB1)
+    # Compute union
+    union = areaA + areaB - intersection
+    return intersection / union

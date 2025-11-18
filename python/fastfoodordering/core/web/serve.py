@@ -132,8 +132,16 @@ def main(args):
     )
     dspy.settings.configure(lm=lm)
 
+    print(f"🚀 Starting WebSocket server on {args.host}:{args.port}", flush=True)
     main_loop = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": args.host, "port": args.port})
     main_loop.start()
+    
+    # Give the WebSocket server time to start up
+    startup_delay = float(os.getenv("WEBSOCKET_STARTUP_DELAY", "2.0"))
+    print(f"⏳ Waiting {startup_delay}s for WebSocket server to initialize...", flush=True)
+    time.sleep(startup_delay)
+    print(f"✅ WebSocket server ready at ws://{args.host}:{args.port}/active-session/view", flush=True)
+    
     asyncio.run(shared.this_session())
 
 if __name__ == "__main__":

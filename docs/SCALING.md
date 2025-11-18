@@ -278,8 +278,8 @@ docker volume prune -f
 
 ## Best Practices
 
-1. **One user per instance** - The single-user lock ensures optimal performance
-2. **Start with 2-3 instances** - Add more as needed
+1. **Multiple users per instance** - Instances now support concurrent users
+2. **Start with 2-3 instances** - Add more as needed based on load
 3. **Monitor resources** - Use `docker stats` to watch CPU/RAM
 4. **Use GPU instances for heavy workloads** - Set `LLM_DEVICE_TYPE=gpu`
 5. **Regular backups** - Backup `.env.instance*` files
@@ -313,7 +313,7 @@ crontab -e
 - **Maximum instances**: Limited by available ports and resources
 - **Port range**: 65535 total ports available
 - **Practical limit**: ~50-100 instances per machine (resource dependent)
-- **Single-user lock**: Each instance serves 1 concurrent user
+- **Concurrent users**: Multiple users can access each instance simultaneously
 
 ## Migration from Old System
 

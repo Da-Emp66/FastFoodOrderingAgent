@@ -43,11 +43,11 @@ tools:
     - Look at the screenshot and identify the box number for the target element
     - The box numbers are shown as labels on the screenshot (0, 1, 2, etc.)
 
+planner_type: dspy
 planner:
   visibility_settings:
     tools_visible: True
-browser_visibility_mode: debug
-
+browser_visibility_mode: ${BROWSER_VISIBILITY_MODE}
 parser:
   parser_uri: http://${PARSER_HOST}:${PARSER_PORT}
   parser_mode: ${PARSER_MODE}

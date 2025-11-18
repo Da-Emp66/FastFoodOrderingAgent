@@ -24,6 +24,7 @@ if __name__ == "__main__":
         api_base=os.getenv("OPENAI_BASE_URL"),
         api_key="sk-1234",
         model_type="chat",
+        temperature=0.7,
     )
     dspy.settings.configure(lm=lm)
 
@@ -108,7 +109,8 @@ if __name__ == "__main__":
 
     os.environ["SESSION_USER"] = "user"
     os.environ["SESSION_ID"] = "id"
-    os.environ["SESSION_OBJECTIVE"] = "Order me a burger from Burger King (https://www.bk.com/)"
+    os.environ["SESSION_OBJECTIVE"] = "Order me a burger from Burger King (https://www.bk.com/) for delivery"
+    # os.environ["SESSION_OBJECTIVE"] = "Order me a taco from Taco Bell (https://www.tacobell.com/). Stop when you get to the payment screen."
 
     # browser_search_agent = TARSLikeBrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
     browser_search_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)

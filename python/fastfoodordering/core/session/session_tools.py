@@ -1,23 +1,22 @@
-import json
 import os
-from typing import Union
+from typing import Optional, Union
 from uuid import uuid4
 
 import requests
 import yaml
 import shared
 from core.session.session import BrowserGeoLocation, ObjectiveSpecification, Session, SessionManagerToolCallResult
-from core.utils import populate_environment_specifications
+from core.utils import populate_environment_specifications, remove_special_characters
 
 WEB_AGENT_IMAGE = os.getenv("WEB_AGENT_IMAGE", "web-agent")
 WEB_AGENT_TAG = os.getenv("WEB_AGENT_TAG", "latest")
 
 async def start_session(
-    order: str,
+    exact_user_query: str,
     user: str,
-    current_geolocation: BrowserGeoLocation,
+    current_geolocation: Optional[BrowserGeoLocation] = None,
 ) -> Union[str, "SessionManagerToolCallResult"]:
-    user = user.replace("{", "").replace("}", "") # STRONG TODO: LLM should not generate user, current_geolocation
+    user_without_special_characters = remove_special_characters(user)
     session_id = str(uuid4())
     container_environment_vars = os.environ.copy()
     
@@ -28,17 +27,17 @@ async def start_session(
     container_environment_vars.update(replacements)
     
     container_environment_vars.update({
-        "_DYN_WEB_AGENT_USER": user,
+        "_DYN_WEB_AGENT_USER": user_without_special_characters,
         "_DYN_WEB_AGENT_SESSION_ID": session_id,
         "SESSION_USER": user,
         "SESSION_ID": session_id,
-        "SESSION_OBJECTIVE": order,
-        "BROWSER_GEOLOCATION": json.dumps(current_geolocation),
-        "PLAYWRIGHT_BROWSERS_PATH": "/root/.cache/ms-playwright",
+        "SESSION_OBJECTIVE": exact_user_query,
+        "BROWSER_GEOLOCATION": current_geolocation.model_dump_json(),
+        # "BROWSER_AGENT_TYPE": ,
     })
     web_agent_environment_spec = populate_environment_specifications(
         shared.session_manager.configuration.web_agent_spec,
-        _DYN_WEB_AGENT_USER=user,
+        _DYN_WEB_AGENT_USER=user_without_special_characters,
         _DYN_WEB_AGENT_SESSION_ID=session_id,
     )
     print(f"Starting user `{user}`'s session `{session_id}` with the following spec:")
@@ -73,7 +72,8 @@ async def update_session(
     session_id: str,
     updated_objective_spec: ObjectiveSpecification,
 ) -> Union[str, "SessionManagerToolCallResult"]:
-    response = requests.put(f"http://{user}-session-{session_id}:9000/active-session", data=Session(
+    user_without_special_characters = remove_special_characters(user)
+    response = requests.put(f"http://{user_without_special_characters}-session-{session_id}:9000/active-session", data=Session(
         user=user,
         session_id=session_id,
         objective_spec=updated_objective_spec,
@@ -88,12 +88,22 @@ async def cancel_session(
     user: str,
     session_id: str,
 ) -> Union[str, "SessionManagerToolCallResult"]:
-    container_name = populate_environment_specifications(shared.session_manager.configuration.web_agent_spec["name"])
+    
+    user_without_special_characters = remove_special_characters(user)
+    container_name = populate_environment_specifications(
+        shared.session_manager.configuration.web_agent_spec["name"],
+        _DYN_WEB_AGENT_USER=user_without_special_characters,
+        _DYN_WEB_AGENT_SESSION_ID=session_id,
+    )
     container = shared.docker_client.containers.get(container_name)
     # OR
-    # container_id = session_ids_to_containers.get(session_id)
-    # container = docker_client.containers.get(container_id)
+    # container = shared.session_ids_to_containers.get(session_id)
+
+    if container is None:
+        return SessionManagerToolCallResult(result=f"Failed to cancel session!!! Session with ID {session_id} for user {user} does not exist.").model_dump_json()
+    container_id = container.id
+    container = shared.docker_client.containers.get(container_id)
     container.stop()
     container.remove()
     shared.session_ids_to_containers.pop(session_id)
-    return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} canceled.").model_dump_json()
+    return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} canceled successfully.").model_dump_json()
