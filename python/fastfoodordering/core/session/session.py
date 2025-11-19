@@ -2,9 +2,9 @@ import asyncio
 import enum
 import json
 import logging
+import math
 import os
 from pathlib import Path
-import time
 import traceback
 from typing import Any, Dict, List, Literal, Optional, Union
 import uuid
@@ -13,8 +13,11 @@ import cv2
 import litellm
 from pydantic import BaseModel, Field
 import websockets
+import yaml
 
 from core.utils import (
+    BaseModelJSONEncoder,
+    BaseModelYAMLDumper,
     ConstrainedToolCaller,
     DSPyToolCaller,
     extract_final_message_content,
@@ -23,6 +26,7 @@ from core.utils import (
     remove_special_characters,
 )
 from core.web.tool_calling.interface import ToolModes
+from core.session.session_utils import get_restaurant_locations_nearby
 
 BACKEND_LOGGER: logging.Logger = logging.getLogger("BACKEND_LOGGER")
 VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH: str = Path(__file__).parent.parent / "assets" / "video_placeholder.jpg"
@@ -63,28 +67,39 @@ class SessionManagerChatResult(BaseModel):
     """If there is a session created for the first time during this chat, the session_id is returned. Otherwise, null."""
 
 class FoodOrDrinkItem(BaseModel):
-    official_name: str
+    official_food_item_name: str
     special_instructions: Optional[str] = None
 
 class OrderDetails(BaseModel):
-    restaurant_name: Optional[str] = None
-    order: Optional[List[FoodOrDrinkItem]] = None
+    restaurant_or_food_chain_name: Optional[str] = None
+    food_items_to_order: Optional[List[FoodOrDrinkItem]] = None
     pickup_or_delivery: Optional[Literal['pickup', 'delivery']] = None
-    restaurant_location: Optional[str] = None
-    delivery_address: Optional[str] = None
+    restaurant_address: Optional[str] = None
+    delivery_address_if_for_delivery: Optional[str] = None
 
     def incomplete_fields(self) -> List[str]:
-        incomplete = []
-        for field in [
-            "restaurant_name",
-            "order",
+        required_fields = [
+            "restaurant_or_food_chain_name",
+            "food_items_to_order",
             "pickup_or_delivery",
-            "restaurant_location",
-            "delivery_address",
-        ]:
+            "restaurant_address",
+        ]
+        conditional_fields = [
+            "delivery_address_if_for_delivery",
+        ]
+
+        incomplete = []
+        for field in required_fields:
             if self.field_not_provided(getattr(self, field)):
                 incomplete.append(field)
-        return incomplete
+        
+        for field in conditional_fields:
+            if field == "delivery_address_if_for_delivery" \
+                and self.pickup_or_delivery == "delivery" \
+                and self.field_not_provided(getattr(self, field)):
+                incomplete.append(field)
+        
+        return list(incomplete)
     
     def field_not_provided(self, field: Any) -> bool:
         if field is None or (
@@ -115,14 +130,25 @@ class SessionCompletionStatus(BaseModel):
     state: CompletionStatus
     items_ordered: List[FoodOrDrinkItem] = []
 
+class SessionManagerExtractionConfiguration(BaseModel):
+    extraction_system_prompt: str
+    force_current_order_detail_preservation: bool = False
+
+class SessionManagerPlanConfiguration(BaseModel):
+    plan_system_prompt: str
+    max_tokens: int = 200
+    enabled: bool = True
+
 class SessionManagerResponseConfiguration(BaseModel):
-    response_system_prompt: str = """You are a helpful assistant who specializes in helping users place food orders at restaurants nearby. Respond to the user based on the user's request. 
-    For example, if the user asks for help finding a restaurant, say something like "Okay, I will help you look for a restaurant nearby." 
-    If the user asks for help placing an order, say "I will work to schedule an order" at the restaurant of their choice."""
+    response_incomplete_restaurant_location_system_prompt: str
+    response_incomplete_fields_system_prompt: str
+    response_system_prompt: str
     max_tokens: int = 200
 
 class SessionManagerConfiguration(BaseModel):
-    response: SessionManagerResponseConfiguration = SessionManagerResponseConfiguration()
+    extraction: SessionManagerExtractionConfiguration
+    plan: SessionManagerPlanConfiguration
+    response: SessionManagerResponseConfiguration
     tool_mode: ToolModes = ToolModes.Constrained
     tools: Optional[Dict[str, Any]] = None
     web_agent_spec: Dict[str, Any] = {}
@@ -139,47 +165,55 @@ class SessionManager:
         self.sessions: Dict[str, Dict[str, Session]] = {}
         # Outer key is user, inner key is UI's ID
         self.order_details: Dict[str, Dict[str, OrderDetails]] = {}
+        self.order_chat_history: Dict[str, Dict[str, str]] = {}
     
     async def __call__(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
-        # Check if using API mode (hardcoded scripts)
-        if prompt.ordering_mode and prompt.ordering_mode.startswith("API"):
-            return await self.handle_api_ordering(prompt)
-
-        # Otherwise use GUI mode (current AI agent behavior)
-        return await self.handle_gui_ordering(prompt)
-    
-    async def handle_gui_ordering(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
-        """Handle ordering using the AI agent (GUI mode)"""
         from core.session.session_tools import (
-            cancel_session,
-            start_session,
-            update_session,
+            cancel_ordering_session,
+            start_ordering_session,
+            update_ordering_session,
+        )
+        ui_id = (prompt.ui_id or DEFAULT_UI_UUID)
+        if self.tool_caller is not None and not self.tool_caller.initialized:
+            await self.tool_caller.initialize_tools()
+        current_history = json.dumps(
+            self.order_chat_history.get(prompt.user, {}).get(ui_id, None),
+            indent=2,
+            cls=BaseModelJSONEncoder,
         )
 
-        await self.tool_caller.initialize_tools()
-    
         # Describe what the user wants and how it relates to
         # starting, updating, or canceling an order
-        response = litellm.completion(
-            os.getenv("MODEL"),
-            messages=[
-                {"content": self.configuration.response.response_system_prompt, "role": "system"},
-                {"content": prompt.prompt, "role": "user"},
-            ],
-            api_key=os.getenv("OPENAI_API_KEY"),
-            base_url=os.getenv("OPENAI_BASE_URL"),
-            max_tokens=self.configuration.response.max_tokens,
-        ).choices[0].message.content
-        response = extract_final_message_content(response)
+        if self.configuration.plan.enabled:
+            plan = litellm.completion(
+                os.getenv("MODEL"),
+                messages=[
+                    {
+                        "content": self.configuration.plan.plan_system_prompt.replace(
+                                "{tool_options}",
+                                yaml.safe_dump(list(self.tool_caller.tools.keys()))
+                            ) \
+                            .replace("{history}", current_history),
+                        "role": "system"
+                    },
+                    {"content": prompt.prompt, "role": "user"},
+                ],
+                api_key=os.getenv("OPENAI_API_KEY"),
+                base_url=os.getenv("OPENAI_BASE_URL"),
+                max_tokens=self.configuration.response.max_tokens,
+            ).choices[0].message.content
 
         # Determine the tool
+        result = None
         try:
+            print(f"Plan: {plan}")
             generated_tool = await self.tool_caller.determine_tool(
                 user=prompt.user,
                 prompt=prompt.prompt,
-                response=response,
+                response=plan,
                 session_id=prompt.session_id,
                 current_geolocation=prompt.current_geolocation,
+                history=current_history,
                 skip_args=True,
             )
         except Exception as e:
@@ -188,68 +222,122 @@ class SessionManager:
             print(result)
 
         session_id = None
-        if generated_tool is not None:
+        user_prompt_for_final_response = ""
+        if generated_tool is not None \
+            and generated_tool.spec.tool is not None \
+            and generated_tool.spec.tool != "null_function":
 
-            # TODO: Validate order details before starting and/or updating the session
-            if generated_tool.spec.tool == "start_session" \
-                or generated_tool.spec.tool == "update_session":
-                ui_id = (prompt.ui_id or DEFAULT_UI_UUID)
-                current_known_order_details = self.order_details.get(prompt.user, {}).get(ui_id, None)
-                current_known_order_details = self.extract_order_details(
-                    prompt=prompt.prompt,
+            # Preprocess
+            if generated_tool.spec.tool == "start_ordering_session" and prompt.session_id is not None:
+                    generated_tool.spec.tool = "update_ordering_session"
+            elif generated_tool.spec.tool == "update_ordering_session" and prompt.session_id is None:
+                    generated_tool.spec.tool = "start_ordering_session"
+            
+            # Validate order details before starting and/or updating the session
+            if generated_tool.spec.tool == "start_ordering_session" \
+                or generated_tool.spec.tool == "update_ordering_session":
+                if self.order_details.get(prompt.user, None) is None: self.order_details[prompt.user] = {}
+                current_known_order_details = self.order_details.get(prompt.user).get(ui_id, OrderDetails())
+                current_known_order_details = await self.extract_order_details(
+                    prompt=self.configuration.extraction.extraction_system_prompt \
+                        .replace("{user_prompt}", prompt.prompt) \
+                        .replace("{history}", current_history),
                     current_known_order_details=current_known_order_details,
+                    force_current_order_detail_preservation=self.configuration.extraction.force_current_order_detail_preservation,
                 )
+                self.order_details[prompt.user][ui_id] = current_known_order_details
+                print(f"Updating extracted order details for user {prompt.user} to: {json.dumps(current_known_order_details, indent=2, cls=BaseModelJSONEncoder)}")
+                if prompt.current_geolocation is not None \
+                    and current_known_order_details.restaurant_or_food_chain_name is not None \
+                    and current_known_order_details.restaurant_address is None:
+                    restaurant_location_options = get_restaurant_locations_nearby(
+                        latitude=prompt.current_geolocation.latitude,
+                        longitude=prompt.current_geolocation.longitude,
+                        restaurant_name_or_food_chain=current_known_order_details.restaurant_or_food_chain_name,
+                    )
+                    if type(restaurant_location_options) == list and len(restaurant_location_options) > 0:
+                        # Query the user with these locations as options
+                        response_incomplete_restaurant_location = litellm.completion(
+                            os.getenv("MODEL"),
+                            messages=[
+                                {
+                                    "content": self.configuration.response.response_incomplete_restaurant_location_system_prompt \
+                                        .replace("{history}", current_history) \
+                                        .replace("{user_prompt}", prompt.prompt),
+                                    "role": "system"
+                                },
+                                {
+                                    "content": "Based on the current user's prompt and your chat history with the user, mention that you have to first get the location of the restaurant they want their order to be placed at.\n" \
+                                                f"Query the user for their preferred restaurant location out of these three options. Make sure to include the addresses and distances (up to 2 decimal points) of these options (but not the latitude and longitude) in your response:\n{yaml.dump(restaurant_location_options[:3], Dumper=BaseModelYAMLDumper)}",
+                                    "role": "user",
+                                },
+                            ],
+                            api_key=os.getenv("OPENAI_API_KEY"),
+                            base_url=os.getenv("OPENAI_BASE_URL"),
+                            max_tokens=self.configuration.response.max_tokens,
+                        ).choices[0].message.content
+
+                        if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
+                        self.order_chat_history[prompt.user][ui_id] = self.order_chat_history[prompt.user].get(ui_id, []) + [
+                            {"user": prompt.prompt},
+                            {"assistant": response_incomplete_restaurant_location},
+                        ]
+                        return SessionManagerChatResult(
+                            response=extract_final_message_content(response_incomplete_restaurant_location),
+                        )
+
                 self.order_details[prompt.user][ui_id] = current_known_order_details
                 incomplete_fields = current_known_order_details.incomplete_fields()
                 if len(incomplete_fields) > 0:
-                    # TODO: Query for more information
+                    print(f"Current known fields: {current_known_order_details.model_dump_json(indent=2)}")
+                    print(f"Fields identified as incomplete: {incomplete_fields}")
+                    response_incomplete_fields = litellm.completion(
+                        os.getenv("MODEL"),
+                        messages=[
+                            {"content": self.configuration.response.response_incomplete_fields_system_prompt, "role": "system"},
+                            {"content": f"User's prompt was: '{prompt.prompt}'\nRemaining items to ask the user for:\n{yaml.safe_dump(incomplete_fields)}", "role": "user"},
+                        ],
+                        api_key=os.getenv("OPENAI_API_KEY"),
+                        base_url=os.getenv("OPENAI_BASE_URL"),
+                        max_tokens=self.configuration.response.max_tokens,
+                    ).choices[0].message.content
+
+                    if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
+                    self.order_chat_history[prompt.user][ui_id] = self.order_chat_history[prompt.user].get(ui_id, []) + [
+                        {"user": prompt.prompt},
+                        {"assistant": response_incomplete_fields},
+                    ]
                     return SessionManagerChatResult(
-                        response=response,
+                        response=extract_final_message_content(response_incomplete_fields),
                     )
 
-            if generated_tool.spec.tool == "start_session":
-                if prompt.session_id is not None:
-                    generated_tool.spec.tool = "update_session"
-                    result = await update_session(
-                        user=prompt.user,
-                        session_id=prompt.session_id,
-                        updated_objective_spec=ObjectiveSpecification(
-                            objective=prompt.prompt,
-                        )
+            if generated_tool.spec.tool == "start_ordering_session":
+                print("Starting session...")
+                result = await start_ordering_session(
+                    exact_user_query=prompt.prompt,
+                    user=prompt.user,
+                    current_geolocation=prompt.current_geolocation,
+                    session_mode=prompt.ordering_mode,
+                )
+            elif generated_tool.spec.tool == "update_ordering_session":
+                print("Updating session...")
+                result = await update_ordering_session(
+                    user=prompt.user,
+                    session_id=prompt.session_id,
+                    updated_objective_spec=ObjectiveSpecification(
+                        objective=prompt.prompt,
                     )
-                else:
-                    result = await start_session(
-                        exact_user_query=prompt.prompt,
-                        user=prompt.user,
-                        current_geolocation=prompt.current_geolocation,
-                        session_mode=prompt.ordering_mode,
-                    )
-            elif generated_tool.spec.tool == "update_session":
-                if prompt.session_id is None:
-                    generated_tool.spec.tool = "start_session"
-                    result = await start_session(
-                        exact_user_query=prompt.prompt,
-                        user=prompt.user,
-                        current_geolocation=prompt.current_geolocation,
-                        session_mode=prompt.ordering_mode,
-                    )
-                else:
-                    result = await update_session(
-                        user=prompt.user,
-                        session_id=prompt.session_id,
-                        updated_objective_spec=ObjectiveSpecification(
-                            objective=prompt.prompt,
-                        )
-                    )
-            elif generated_tool.spec.tool == "cancel_session":
-                result = await cancel_session(
+                )
+            elif generated_tool.spec.tool == "cancel_ordering_session":
+                print("Canceling session...")
+                result = await cancel_ordering_session(
                     user=prompt.user,
                     session_id=prompt.session_id,
                 )
             else:
                 result = "No function called."
             
-            if generated_tool.spec.tool == "start_session":
+            if generated_tool.spec.tool == "start_ordering_session":
                 try:
                     session_id = json.loads(result).get("session_id", None)
                 except json.JSONDecodeError as e:
@@ -258,65 +346,84 @@ class SessionManager:
                 except Exception as e:
                     result = f"Failed to call tool {generated_tool.spec}: {e}"
                     print(result)
+            
+            user_prompt_for_final_response = f"User's prompt was: '{prompt.prompt}'\nYour tool call was: '{generated_tool.spec.model_dump_json(indent=2)}'\nThat tool's result was: '{result}'\n"
+        else:
+            user_prompt_for_final_response = f"User's prompt was: '{prompt.prompt}'\nYou did not call a tool, so simply respond according to the user's prompt.\n"
 
+        print(f"User prompt for final response: {user_prompt_for_final_response}")
+        response = litellm.completion(
+            os.getenv("MODEL"),
+            messages=[
+                {
+                    "content": self.configuration.response.response_system_prompt.replace("{history}", current_history),
+                    "role": "system",
+                },
+                {"content": user_prompt_for_final_response, "role": "user"},
+            ],
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=self.configuration.response.max_tokens,
+        ).choices[0].message.content
+        
+        if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
+        self.order_chat_history[prompt.user][ui_id] = self.order_chat_history[prompt.user].get(ui_id, []) + [
+            {"user": prompt.prompt},
+            {"assistant": response},
+        ]
         return SessionManagerChatResult(
-            response=response,
+            response=extract_final_message_content(response),
             session_id=session_id,
         )
 
-    async def handle_api_ordering(self, prompt: SessionManagerPrompt) -> SessionManagerChatResult:
-        """Handle ordering using hardcoded scripts (API mode)"""
-        # Extract food item from the prompt
-        food_item = self.extract_food_item(prompt.prompt)
+    # def extract_food_item(self, prompt: str) -> str:
+    #     """Extract food item name from user prompt using keyword matching"""
+    #     # List of known menu items (can be expanded)
+    #     KNOWN_ITEMS = [
+    #         # Wendy's items
+    #         "Baconator", "Dave's Single", "Dave's Double", "Dave's Triple",
+    #         "Junior Cheeseburger", "Spicy Chicken Sandwich", "Asiago Ranch Chicken Club",
+    #         "Classic Chicken Sandwich", "Homestyle Chicken Sandwich",
+    #         "Son of Baconator", "Pretzel Bacon Pub", "Big Bacon Classic",
 
-        # Determine which script to call
-        if prompt.ordering_mode == "API-Wendys":
-            # TODO: implement wendys_script
-            # result = await call_wendys_script(food_item)
-            response = f"API Mode: Would order '{food_item}' from Wendy's (script not implemented yet)"
-        elif prompt.ordering_mode == "API-McDonalds":
-            # TODO: implement mcdonalds_script
-            # result = await call_mcdonalds_script(food_item)
-            response = f"API Mode: Would order '{food_item}' from McDonald's (script not implemented yet)"
-        else:
-            response = f"Unknown ordering mode: {prompt.ordering_mode}"
+    #         # McDonald's items
+    #         "Big Mac", "Quarter Pounder", "McChicken", "Filet-O-Fish",
+    #         "McDouble", "Cheeseburger", "Hamburger", "Chicken McNuggets",
+    #         "McFlurry", "Happy Meal", "Egg McMuffin", "Sausage McMuffin",
+    #     ]
 
-        return SessionManagerChatResult(
-            response=response,
-            session_id=prompt.session_id,
-        )
+    #     # Check for exact matches (case insensitive)
+    #     prompt_lower = prompt.lower()
+    #     for item in KNOWN_ITEMS:
+    #         if item.lower() in prompt_lower:
+    #             return item
 
-    def extract_food_item(self, prompt: str) -> str:
-        """Extract food item name from user prompt using keyword matching"""
-        # List of known menu items (can be expanded)
-        KNOWN_ITEMS = [
-            # Wendy's items
-            "Baconator", "Dave's Single", "Dave's Double", "Dave's Triple",
-            "Junior Cheeseburger", "Spicy Chicken Sandwich", "Asiago Ranch Chicken Club",
-            "Classic Chicken Sandwich", "Homestyle Chicken Sandwich",
-            "Son of Baconator", "Pretzel Bacon Pub", "Big Bacon Classic",
-
-            # McDonald's items
-            "Big Mac", "Quarter Pounder", "McChicken", "Filet-O-Fish",
-            "McDouble", "Cheeseburger", "Hamburger", "Chicken McNuggets",
-            "McFlurry", "Happy Meal", "Egg McMuffin", "Sausage McMuffin",
-        ]
-
-        # Check for exact matches (case insensitive)
-        prompt_lower = prompt.lower()
-        for item in KNOWN_ITEMS:
-            if item.lower() in prompt_lower:
-                return item
-
-        # Fallback: return the entire prompt (let the script handle it)
-        return prompt.strip()
+    #     # Fallback: return the entire prompt (let the script handle it)
+    #     return prompt.strip()
     
-    async def extract_order_details(self, prompt: str, current_known_order_details: OrderDetails) -> OrderDetails:
-        return self.tool_caller.extract_via_schema(
-            prompt,
-            schema_cls=OrderDetails,
-            known_details=current_known_order_details.model_dump_json(indent=2),
-        )
+    async def extract_order_details(self, prompt: str, current_known_order_details: OrderDetails, force_current_order_detail_preservation: bool = False) -> OrderDetails:
+        if force_current_order_detail_preservation:
+            extracted = self.tool_caller.extract_via_schema(
+                prompt,
+                schema_cls=OrderDetails,
+                known_details=current_known_order_details.model_dump_json(indent=2),
+            ).model_dump()
+            for key, val in extracted.items():
+                if val is not None:
+                    setattr(current_known_order_details, key, val)
+        else:
+            current_known_order_details = self.tool_caller.extract_via_schema(
+                prompt,
+                schema_cls=OrderDetails,
+                known_details=current_known_order_details.model_dump_json(indent=2),
+            )
+        # Postprocess
+        if current_known_order_details.delivery_address_if_for_delivery is not None \
+            and (current_known_order_details.pickup_or_delivery != 'delivery') and \
+            current_known_order_details.restaurant_location is None:
+            # Fix it if the model wrongly places restaurant_location in delivery address
+            current_known_order_details.restaurant_location = current_known_order_details.delivery_address_if_for_delivery
+        return current_known_order_details
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
         user_without_special_characters = remove_special_characters(user)

@@ -11,11 +11,11 @@ from core.utils import place_coordinate_on_image
 from core.web.parser import get_item_by_label_number
 import shared
 
-# Default browser geolocation is Orlando
+# Default browser geolocation is UCF, Orlando
 # Accuracy denotes coordinate accuracy in meters.
 BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
-    "latitude": 28.5383,
-    "longitude": -81.3792,
+    "latitude": 28.6016,
+    "longitude": -81.2005,
     "accuracy": 100
 }'''))
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0

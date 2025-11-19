@@ -5,17 +5,18 @@ from uuid import uuid4
 import requests
 import yaml
 import shared
-from core.session.session import BrowserGeoLocation, ObjectiveSpecification, Session, SessionManagerToolCallResult
+from core.session.session import BrowserGeoLocation, ObjectiveSpecification, OrderDetails, Session, SessionManagerToolCallResult
 from core.utils import populate_environment_specifications, remove_special_characters
 
 WEB_AGENT_IMAGE = os.getenv("WEB_AGENT_IMAGE", "web-agent")
 WEB_AGENT_TAG = os.getenv("WEB_AGENT_TAG", "latest")
 
-async def start_session(
+async def start_ordering_session(
     exact_user_query: str,
     user: str,
     current_geolocation: Optional[BrowserGeoLocation] = None,
     session_mode: Optional[str] = None,
+    order_details: Optional[OrderDetails] = None,
 ) -> Union[str, "SessionManagerToolCallResult"]:
     user_without_special_characters = remove_special_characters(user)
     session_id = str(uuid4())
@@ -30,12 +31,12 @@ async def start_session(
     container_environment_vars.update({
         "_DYN_WEB_AGENT_USER": user_without_special_characters,
         "_DYN_WEB_AGENT_SESSION_ID": session_id,
+        "BROWSER_GEOLOCATION": current_geolocation.model_dump_json(),
+        "BROWSER_AGENT_TYPE": session_mode,
         "SESSION_USER": user,
         "SESSION_ID": session_id,
         "SESSION_OBJECTIVE": exact_user_query,
-        "BROWSER_GEOLOCATION": current_geolocation.model_dump_json(),
-        "BROWSER_AGENT_TYPE": session_mode,
-        # TODO: Need to add more from order details
+        "SESSION_OBJECTIVE_ORDER": order_details.model_dump_json(),
     })
     web_agent_environment_spec = populate_environment_specifications(
         shared.session_manager.configuration.web_agent_spec,
@@ -69,7 +70,7 @@ async def start_session(
         session_id=session_id,
     ).model_dump_json()
 
-async def update_session(
+async def update_ordering_session(
     user: str,
     session_id: str,
     updated_objective_spec: ObjectiveSpecification,
@@ -86,7 +87,7 @@ async def update_session(
 
     return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} updated.").model_dump_json()
 
-async def cancel_session(
+async def cancel_ordering_session(
     user: str,
     session_id: str,
 ) -> Union[str, "SessionManagerToolCallResult"]:

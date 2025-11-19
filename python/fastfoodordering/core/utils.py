@@ -153,12 +153,22 @@ def sanitize_container_name(name: str) -> str:
     
     return sanitized
 
-
+# JSON encoder for Pydantic models
 class BaseModelJSONEncoder(json.JSONEncoder):
     def default(self, obj: Any):
         if isinstance(obj, BaseModel):
             return obj.model_dump_json()
         return super().default(obj)
+    
+# YAML encoder for Pydantic models
+class BaseModelYAMLDumper(yaml.SafeDumper):
+    pass
+
+def basemodel_representer(dumper, obj: BaseModel):
+    return dumper.represent_dict(obj.model_dump())
+
+# Register representer for all BaseModel instances
+BaseModelYAMLDumper.add_multi_representer(BaseModel, basemodel_representer)
 
 #########################################################
 ### Tools
@@ -288,6 +298,7 @@ class ToolReport:
 class ToolCaller(metaclass=abc.ABCMeta):
     configuration: Optional[_BasicConfigType] = None
     tools: Dict[str, UsableTool] = {}
+    initialized: bool = False
 
     async def initialize_tools(self): pass
 
@@ -346,6 +357,7 @@ class DSPyToolCaller(ToolCaller):
                 )
         )
         self.stream_tool_prediction = dspy.streamify(self.tool_prediction)
+        self.initialized = True
     
     async def determine_tool(self, **kwargs) -> GeneratedTool:
         # Create the output stream object based on the current task
@@ -418,6 +430,7 @@ class ConstrainedToolCaller(ToolCaller):
             base_url=os.getenv("OPENAI_BASE_URL"),
             sampling_params=SamplingParams(**self.configuration.tool_generation_params.sampling_params),
         )
+        self.initialized = False
 
     async def initialize_tools(self):
         tools = {}
@@ -448,6 +461,7 @@ class ConstrainedToolCaller(ToolCaller):
         with guidance_system():
             self.lm += self.configuration.tool_system_prompt \
                 .replace("{tool_options}", yaml.safe_dump(tool_options))
+        self.initialized = True
 
     async def determine_tool(self, skip_args: bool = False, **kwargs) -> GeneratedTool:
         success = False
@@ -529,8 +543,11 @@ class ConstrainedToolCaller(ToolCaller):
         while not success:
             try:
                 schema = schema_cls.model_json_schema()
+                kwargs.update({"model_schema": json.dumps(schema, indent=2)})
                 with guidance_user():
+                    print(f"Formatting KWARGS: {kwargs}")
                     prompt = self.format_prompt_string_with_arguments(prompt, kwargs)
+                    print(f"Formatted prompt: {prompt}")
                     self.lm += prompt
                 with guidance_assistant():
                     self.lm += generate_constrained_json(

@@ -738,13 +738,16 @@ dependencies = [
     { name = "dspy", extra = ["mcp"] },
     { name = "easy-sync" },
     { name = "fastmcp" },
+    { name = "geopy" },
     { name = "google-adk" },
+    { name = "googlemaps" },
     { name = "guidance" },
     { name = "litellm" },
     { name = "mcp", extra = ["cli"] },
     { name = "nest-asyncio" },
     { name = "openai" },
     { name = "opencv-python" },
+    { name = "overpy" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "pyautogui" },
@@ -763,13 +766,16 @@ requires-dist = [
     { name = "dspy", extras = ["mcp"], specifier = ">=3.0.3" },
     { name = "easy-sync", specifier = ">=0.2.2" },
     { name = "fastmcp", specifier = ">=2.12.4" },
+    { name = "geopy", specifier = ">=2.4.1" },
     { name = "google-adk", specifier = ">=1.13.0" },
+    { name = "googlemaps", specifier = ">=4.10.0" },
     { name = "guidance", specifier = ">=0.3.0" },
     { name = "litellm", specifier = ">=1.76.2" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.13.1" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
     { name = "openai", specifier = ">=1.106.1" },
     { name = "opencv-python", specifier = ">=4.12.0.88" },
+    { name = "overpy", specifier = ">=0.7" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "playwright", specifier = ">=1.55.0" },
     { name = "pyautogui", specifier = ">=0.9.54" },
@@ -916,6 +922,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/de/e0/bab50af11c2d75c9c4a2a26a5254573c0bd97cea152254401510950486fa/fsspec-2025.9.0.tar.gz", hash = "sha256:19fd429483d25d28b65ec68f9f4adc16c17ea2c7c7bf54ec61360d478fb19c19", size = 304847, upload-time = "2025-09-02T19:10:49.215Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/47/71/70db47e4f6ce3e5c37a607355f80da8860a33226be640226ac52cb05ef2e/fsspec-2025.9.0-py3-none-any.whl", hash = "sha256:530dc2a2af60a414a832059574df4a6e10cce927f6f4a78209390fe38955cfb7", size = 199289, upload-time = "2025-09-02T19:10:47.708Z" },
+]
+
+[[package]]
+name = "geographiclib"
+version = "2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/78/4892343230a9d29faa1364564e525307a37e54ad776ea62c12129dbba704/geographiclib-2.1.tar.gz", hash = "sha256:6a6545e6262d0ed3522e13c515713718797e37ed8c672c31ad7b249f372ef108", size = 37004, upload-time = "2025-08-21T21:34:26Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/b3/802576f2ea5dcb48501bb162e4c7b7b3ca5654a42b2c968ef98a797a4c79/geographiclib-2.1-py3-none-any.whl", hash = "sha256:e2a873b9b9e7fc38721ad73d5f4e6c9ed140d428a339970f505c07056997d40b", size = 40740, upload-time = "2025-08-21T21:34:24.955Z" },
+]
+
+[[package]]
+name = "geopy"
+version = "2.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "geographiclib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/fd/ef6d53875ceab72c1fad22dbed5ec1ad04eb378c2251a6a8024bad890c3b/geopy-2.4.1.tar.gz", hash = "sha256:50283d8e7ad07d89be5cb027338c6365a32044df3ae2556ad3f52f4840b3d0d1", size = 117625, upload-time = "2023-11-23T21:49:32.734Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/15/cf2a69ade4b194aa524ac75112d5caac37414b20a3a03e6865dfe0bd1539/geopy-2.4.1-py3-none-any.whl", hash = "sha256:ae8b4bc5c1131820f4d75fce9d4aaaca0c85189b3aa5d64c3dcaf5e3b7b882a7", size = 125437, upload-time = "2023-11-23T21:49:30.421Z" },
 ]
 
 [[package]]
@@ -1352,6 +1379,15 @@ wheels = [
 grpc = [
     { name = "grpcio" },
 ]
+
+[[package]]
+name = "googlemaps"
+version = "4.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fe/26/bca4d737a9acea25e94c19940a780bbf0be64a691f7caf3a68467d3a5838/googlemaps-4.10.0.tar.gz", hash = "sha256:3055fcbb1aa262a9159b589b5e6af762b10e80634ae11c59495bd44867e47d88", size = 33056, upload-time = "2023-01-26T16:45:02.501Z" }
 
 [[package]]
 name = "graphviz"
@@ -2635,6 +2671,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/98/df/77698abfac98571e65ffeb0c1fba8ffd692ab8458d617a0eed7d9a8d38f2/outcome-1.3.0.post0.tar.gz", hash = "sha256:9dcf02e65f2971b80047b377468e72a268e15c0af3cf1238e6ff14f7f91143b8", size = 21060, upload-time = "2023-10-26T04:26:04.361Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/55/8b/5ab7257531a5d830fc8000c476e63c935488d74609b50f9384a643ec0a62/outcome-1.3.0.post0-py2.py3-none-any.whl", hash = "sha256:e771c5ce06d1415e356078d3bdd68523f284b4ce5419828922b6871e65eda82b", size = 10692, upload-time = "2023-10-26T04:26:02.532Z" },
+]
+
+[[package]]
+name = "overpy"
+version = "0.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/21/4287be6d9de8092837d4d8cfe0bd1e9c48205f0d0760d221868bd0d74ce2/overpy-0.7.tar.gz", hash = "sha256:f6df5073de0cc1f63aed6d2632140f98c3d91fa3a2e3bef1bcfaa6225500f364", size = 48555, upload-time = "2023-12-04T12:20:17.593Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/12/315d56e8386a4060d9a978a34ad48a9af072b67f40504eaa2f44197a15e5/overpy-0.7-py3-none-any.whl", hash = "sha256:cc888c9dcdf9076e667b435909f57e028845c4a1133b6a6f3528284a304516c3", size = 14779, upload-time = "2023-12-04T12:20:15.966Z" },
 ]
 
 [[package]]

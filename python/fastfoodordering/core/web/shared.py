@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-from core.session.session import CompletionStatus, ObjectiveSpecification, Session, SessionCompletionStatus
+from core.session.session import CompletionStatus, ObjectiveSpecification, OrderDetails, Session, SessionCompletionStatus
 from core.web.agent import BrowserAgentSystem
 from core.web.agent_interface import Agent
 from core.web.simple_agent import SimpleBrowserAgent
@@ -17,14 +17,8 @@ NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.getenv(
     "NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH",
     str(Path(__file__).parent.parent.parent / "assets" / "no_browser_placeholder.jpg")
 )
-WEB_AGENT_CONFIG_PATH = os.getenv(
-    "WEB_AGENT_CONFIG_PATH",
-    None
-)
-BROWSER_AGENT_TYPE = os.getenv(
-    "BROWSER_AGENT_TYPE",
-    "base"
-)
+WEB_AGENT_CONFIG_PATH = os.getenv("WEB_AGENT_CONFIG_PATH", None)
+BROWSER_AGENT_TYPE = os.getenv("BROWSER_AGENT_TYPE", "base")
 
 browser_agent = None
 _filtered_browser_agent_type = remove_special_characters(BROWSER_AGENT_TYPE.lower())
@@ -93,7 +87,7 @@ this_session = SessionInProgress(
     session_id=os.getenv("SESSION_ID"),
     objective_spec=ObjectiveSpecification(
         objective=os.getenv("SESSION_OBJECTIVE"),
-        order=json.loads(os.getenv("SESSION_OBJECTIVE_ORDER", "[]")),
+        order=OrderDetails.model_validate_json(os.getenv("SESSION_OBJECTIVE_ORDER", "{}")),
     ),
     status=SessionCompletionStatus(
         state=CompletionStatus.IN_PROGRESS,
