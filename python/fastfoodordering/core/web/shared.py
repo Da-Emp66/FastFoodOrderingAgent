@@ -18,7 +18,7 @@ NO_BROWSER_SCREENSHOT_PLACEHOLDER_PATH = os.getenv(
     str(Path(__file__).parent.parent.parent / "assets" / "no_browser_placeholder.jpg")
 )
 WEB_AGENT_CONFIG_PATH = os.getenv("WEB_AGENT_CONFIG_PATH", None)
-BROWSER_AGENT_TYPE = os.getenv("BROWSER_AGENT_TYPE", None)
+BROWSER_AGENT_TYPE = os.getenv("BROWSER_AGENT_TYPE", "")
 
 browser_agent = None
 _filtered_browser_agent_type = remove_special_characters(BROWSER_AGENT_TYPE.lower())
@@ -27,6 +27,7 @@ if "browseruse" in _filtered_browser_agent_type:
     print("Using BROWSER_AGENT_TYPE default = Instantiating SimpleBrowserAgent")
     os.environ["SCREENSHOT_STRATEGY"] = "externalrepeated" # TODO: SUPPORT THIS IN SIMPLEBROWSERAGENT AND API
     browser_agent = SimpleBrowserAgent(WEB_AGENT_CONFIG_PATH)
+    browser_agent.configuration.screenshot_call_configuration.strategy = "externalrepeated"
     print("SimpleBrowserAgent instantiated!")
 elif "base" in _filtered_browser_agent_type and "gpt" in _filtered_browser_agent_type:
     pass

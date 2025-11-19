@@ -34,19 +34,20 @@ from core.web.tool_calling.stagehand_tools import StageHandBrowserToolCaller
 from core.web.parser import FilterConfig, ParseRequest, ParseRequestConfiguration, ParserConfiguration, ParserDetails, ParserMode, get_item_by_label_number
 from core.web.planning.general_planner import GeneralPlanner
 from core.web.agent_interface import Agent, IterativeTaskResult, Plan
+from core.web.browser_utils import ScreenshotConfiguration, ScreenshotStrategy
 
-class StrategyRepeatedScreenshots(typing_extensions.TypedDict):
-    delay_seconds: float
+# class StrategyRepeatedScreenshots(typing_extensions.TypedDict):
+#     delay_seconds: float
 
-class ScreenshotStrategy(str, enum.Enum):
-    ExternalRepeated = "externalrepeated"
-    """Repeatedly take screenshots outside of the browser agent."""
-    OnBrowserAgent = "onbrowseragent"
-    """Allow the browser agent class to directly call to screenshot."""
+# class ScreenshotStrategy(str, enum.Enum):
+#     ExternalRepeated = "externalrepeated"
+#     """Repeatedly take screenshots outside of the browser agent."""
+#     OnBrowserAgent = "onbrowseragent"
+#     """Allow the browser agent class to directly call to screenshot."""
 
-class ScreenshotConfiguration(BaseModel):
-    strategy: ScreenshotStrategy = os.getenv("SCREENSHOT_STRATEGY", ScreenshotStrategy.OnBrowserAgent)
-    spec: Union[Dict[str, Any], StrategyRepeatedScreenshots] = {}
+# class ScreenshotConfiguration(BaseModel):
+#     strategy: ScreenshotStrategy = os.getenv("SCREENSHOT_STRATEGY", ScreenshotStrategy.OnBrowserAgent)
+#     spec: Union[Dict[str, Any], StrategyRepeatedScreenshots] = {}
 
 class ExtractionConfiguration(BaseModel):
     iou_threshold: float = os.getenv("BLACKLIST_IOU_THRESHOLD", 0.7)

@@ -67,7 +67,7 @@ class SessionManagerChatResult(BaseModel):
     """If there is a session created for the first time during this chat, the session_id is returned. Otherwise, null."""
 
 class FoodOrDrinkItem(BaseModel):
-    official_food_item_name: str
+    food_item_name: str
     special_instructions: Optional[str] = None
 
 class OrderDetails(BaseModel):
@@ -201,6 +201,7 @@ class SessionManager:
                 api_key=os.getenv("OPENAI_API_KEY"),
                 base_url=os.getenv("OPENAI_BASE_URL"),
                 max_tokens=self.configuration.response.max_tokens,
+                temperature=0.3,
             ).choices[0].message.content
 
         # Determine the tool
@@ -275,6 +276,7 @@ class SessionManager:
                             api_key=os.getenv("OPENAI_API_KEY"),
                             base_url=os.getenv("OPENAI_BASE_URL"),
                             max_tokens=self.configuration.response.max_tokens,
+                            temperature=0.14,
                         ).choices[0].message.content
 
                         if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
@@ -300,6 +302,7 @@ class SessionManager:
                         api_key=os.getenv("OPENAI_API_KEY"),
                         base_url=os.getenv("OPENAI_BASE_URL"),
                         max_tokens=self.configuration.response.max_tokens,
+                        temperature=0.2,
                     ).choices[0].message.content
 
                     if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
@@ -320,6 +323,7 @@ class SessionManager:
                     session_mode=prompt.ordering_mode,
                     order_details=current_known_order_details,
                 )
+                print("Started session!")
             elif generated_tool.spec.tool == "update_ordering_session":
                 print("Updating session...")
                 result = await update_ordering_session(
@@ -330,12 +334,14 @@ class SessionManager:
                         extracted_order_details=current_known_order_details,
                     )
                 )
+                print("Updated session!")
             elif generated_tool.spec.tool == "cancel_ordering_session":
                 print("Canceling session...")
                 result = await cancel_ordering_session(
                     user=prompt.user,
                     session_id=prompt.session_id,
                 )
+                print("Canceled session!")
             else:
                 result = "No function called."
             
@@ -366,6 +372,7 @@ class SessionManager:
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL"),
             max_tokens=self.configuration.response.max_tokens,
+            temperature=0.25,
         ).choices[0].message.content
         
         if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
@@ -440,9 +447,10 @@ class SessionManager:
         
         BACKEND_LOGGER.info(f"[Session {session_id}] Initializing WebSocket connection to {session_url}")
 
-        while max_retries == -1 or retry_count < max_retries:
+        while True:
             try:
                 BACKEND_LOGGER.info(f"[Session {session_id}] Attempting WebSocket connection (attempt #{retry_count + 1})...")
+                BACKEND_LOGGER.info(f"Websocket connection is `{session_url}`")
                 async with websockets.connect(session_url, open_timeout=10.0) as websocket:
                     BACKEND_LOGGER.info(f"[Session {session_id}] ✅ Successfully connected to {session_url}")
                     retry_count = 0  # Reset retry count on successful connection
@@ -490,10 +498,10 @@ class SessionManager:
                         f"{traceback.format_exc()}"
                     )
 
-            finally:
-                if max_retries != -1 and retry_count >= max_retries:
-                    BACKEND_LOGGER.error(f"[Session {session_id}] Max retries ({max_retries}) reached. Giving up.")
-                    break
+            # finally:
+            #     if max_retries != -1 and retry_count >= max_retries:
+            #         BACKEND_LOGGER.error(f"[Session {session_id}] Max retries ({max_retries}) reached. Giving up.")
+            #         break
 
             # Short delay before attempting reconnect
             await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_RETRY_DELAY", "5.0")))

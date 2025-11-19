@@ -128,6 +128,15 @@ async def type_text_by_box_label_number(number: int, text: str):
     except Exception as e:
         return str(e)
 
+async def init_globals_for_screenshot_only():
+    print("INSIDE INIT GLOBALS FOR SCREENSHOT DESKTOP")
+    disp = Display(visible=True, size=(1024 + 30, 768 + 150), backend="xvfb", use_xauth=True)
+    disp.start()
+    import pyautogui
+    pyautogui._pyautogui_x11._display = Xlib.display.Display(os.environ['DISPLAY'])
+    pyautogui.FAILSAFE = False
+    print("INIT GLOBALS FOR SCREENSHOT DESKTOP COMPLETE")
+
 async def init_globals():
     print("INSIDE INIT GLOBALS DESKTOP")
     disp = Display(visible=True, size=(1024 + 30, 768 + 150), backend="xvfb", use_xauth=True)

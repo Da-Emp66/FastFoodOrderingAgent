@@ -298,7 +298,7 @@ export default function HungryInput({ onSubmit }: HungryInputProps) {
               🍔
             </Typography>
             <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold' }}>
-              Fast Food Agent
+              Fast Food Ordering Agent
             </Typography>
           </Box>
         </Box>

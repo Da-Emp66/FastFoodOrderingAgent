@@ -73,6 +73,8 @@ extraction:
       the type of food chain / restaurant they are ordering at. I.e., if the user asks to order at a different location of the same chain
       as in the current known details, still do NOT remove any information, but simply update the restaurant_location to the location
       the user specifies or null if they do not specify the location even though they ask to order at a different location.
+    - For the food_items_to_order, include the list of foods the user asked for. For example, if a user orders only a single chicken sandwich,
+      this would be a list where the first food_item_or_name would be "chicken sandwich".
 
     Here is the current known information about the user's order.
     {known_details}

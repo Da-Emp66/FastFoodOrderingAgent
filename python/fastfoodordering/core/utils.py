@@ -523,7 +523,7 @@ class ConstrainedToolCaller(ToolCaller):
                 print(traceback.format_exc())
                 print(f"Encountered exception when determining tool for constrained generation: {str(e)}")
                 print("Retrying in 5 seconds...")
-                asyncio.sleep(5)
+                await asyncio.sleep(5)
                 print("Retrying...")
     
     def format_prompt_string_with_arguments(self, prompt: str, kwargs: Dict[str, Any]):
@@ -538,7 +538,7 @@ class ConstrainedToolCaller(ToolCaller):
             prompt = prompt.replace(f"{{{key}}}", val_str)
         return prompt
     
-    def extract_via_schema(self, prompt: str, schema_cls: type[BaseModel], **kwargs) -> BaseModel:
+    async def extract_via_schema(self, prompt: str, schema_cls: type[BaseModel], **kwargs) -> BaseModel:
         success = False
         while not success:
             try:
@@ -562,7 +562,7 @@ class ConstrainedToolCaller(ToolCaller):
                 print(traceback.format_exc())
                 print(f"Encountered exception when determining tool for constrained generation: {str(e)}")
                 print("Retrying in 5 seconds...")
-                asyncio.sleep(5)
+                await asyncio.sleep(5)
                 print("Retrying...")
 
 class History(BaseModel):

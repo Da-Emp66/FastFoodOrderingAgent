@@ -126,7 +126,7 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                 print(traceback.format_exc())
                 print(f"Encountered exception when determining tool for constrained generation: {str(e)}")
                 print("Retrying in 5 seconds...")
-                asyncio.sleep(5)
+                await asyncio.sleep(5)
                 print("Retrying...")
     
     async def screenshot(self) -> Optional[cv2.typing.MatLike]:

@@ -6,6 +6,7 @@ import dspy
 
 from core.web.agent import BrowserAgentSystem
 from core.web.tars_like import TARSLikeBrowserAgentSystem
+from core.web.simple_agent import SimpleBrowserAgent
 
 # Load environment variables
 dotenv_to_use = find_dotenv()
@@ -114,6 +115,9 @@ if __name__ == "__main__":
 
     # browser_search_agent = TARSLikeBrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
     browser_search_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
+    
+    # WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "simple-browser-agent.yaml")
+    # browser_search_agent = SimpleBrowserAgent(WEB_AGENT_CONFIG_PATH)
 
     ### Example inference
     asyncio.run(browser_search_agent())
