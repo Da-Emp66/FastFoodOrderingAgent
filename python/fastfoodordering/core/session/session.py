@@ -234,10 +234,10 @@ class SessionManager:
                     generated_tool.spec.tool = "start_ordering_session"
             
             # Validate order details before starting and/or updating the session
+            current_known_order_details = self.order_details.get(prompt.user, {}).get(ui_id, OrderDetails())
             if generated_tool.spec.tool == "start_ordering_session" \
                 or generated_tool.spec.tool == "update_ordering_session":
                 if self.order_details.get(prompt.user, None) is None: self.order_details[prompt.user] = {}
-                current_known_order_details = self.order_details.get(prompt.user).get(ui_id, OrderDetails())
                 current_known_order_details = await self.extract_order_details(
                     prompt=self.configuration.extraction.extraction_system_prompt \
                         .replace("{user_prompt}", prompt.prompt) \
@@ -318,6 +318,7 @@ class SessionManager:
                     user=prompt.user,
                     current_geolocation=prompt.current_geolocation,
                     session_mode=prompt.ordering_mode,
+                    order_details=current_known_order_details,
                 )
             elif generated_tool.spec.tool == "update_ordering_session":
                 print("Updating session...")
@@ -326,6 +327,7 @@ class SessionManager:
                     session_id=prompt.session_id,
                     updated_objective_spec=ObjectiveSpecification(
                         objective=prompt.prompt,
+                        extracted_order_details=current_known_order_details,
                     )
                 )
             elif generated_tool.spec.tool == "cancel_ordering_session":
@@ -420,9 +422,9 @@ class SessionManager:
         # Postprocess
         if current_known_order_details.delivery_address_if_for_delivery is not None \
             and (current_known_order_details.pickup_or_delivery != 'delivery') and \
-            current_known_order_details.restaurant_location is None:
+            current_known_order_details.restaurant_address is None:
             # Fix it if the model wrongly places restaurant_location in delivery address
-            current_known_order_details.restaurant_location = current_known_order_details.delivery_address_if_for_delivery
+            current_known_order_details.restaurant_address = current_known_order_details.delivery_address_if_for_delivery
         return current_known_order_details
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
