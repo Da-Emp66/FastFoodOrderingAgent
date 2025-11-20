@@ -11,8 +11,8 @@ from core.utils import place_coordinate_on_image
 from core.web.parser import get_item_by_label_number
 import shared
 
-# HEADLESS = True # For local testing
-HEADLESS = False # For production Docker
+HEADLESS = True # For production Docker
+# HEADLESS = False # For local testing
 
 # Default browser geolocation is UCF, Orlando
 # Accuracy denotes coordinate accuracy in meters.
@@ -38,6 +38,7 @@ async def navigate(url: str):
     print("In function call `navigate`...")
     try:
         await page.goto(url)
+        await asyncio.sleep(0.1)
         await page._page.context.grant_permissions(["geolocation"])
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success"
@@ -100,7 +101,9 @@ async def click_element_by_box_label_number(number: int):
         vy = center_y_relative * page._page.viewport_size['height']
         if not HEADLESS:
             await page.bring_to_front()
+            await asyncio.sleep(0.1)
         await page._page.mouse.move(vx, vy)
+        await asyncio.sleep(0.1)
         await page._page.mouse.click(vx, vy)
         # Store absolute click coordinates for visual feedback
         MOST_RECENT_CLICK = (vx, vy)
@@ -144,7 +147,9 @@ async def type_text_by_box_label_number(number: int, text: str):
             return f"[⚠️] Error: Element at viewport ({vx:.1f}, {vy:.1f}) is not visible"
         # Fill the element
         await element.click()
+        await asyncio.sleep(0.1)
         await element.fill(text)
+        await asyncio.sleep(0.1)
         await element.press("Enter")
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         # Store absolute click coordinates for visual feedback
@@ -163,6 +168,7 @@ async def fill_all_text_boxes_with(text: str):
             if await el.is_visible() and await el.is_enabled():
                 try:
                     await el.fill(text)
+                    await asyncio.sleep(0.1)
                     await el.press("Enter")
                     bbox = await el.bounding_box()
                     MOST_RECENT_CLICK = bbox["x"] + bbox["width"] / 2, bbox["y"] + bbox["height"] / 2
@@ -213,7 +219,7 @@ async def run_screenshot():
         return str(e)
     
 def mark_screenshot_with_most_recent_click():
-    global MOST_RECENT_CLICK
+    global page, MOST_RECENT_CLICK
     path = shared.CURRENT_SCREENSHOT_PATH
     # Add visual marker for the most recent click
     if MOST_RECENT_CLICK is not None:
@@ -251,7 +257,9 @@ async def click_exact_pixel_coordinates(x: float, y: float):
     try:
         if not HEADLESS:
             await page.bring_to_front()
+            await asyncio.sleep(0.1)
         await page._page.mouse.move(x, y)
+        await asyncio.sleep(0.1)
         await page._page.mouse.click(x, y)
         MOST_RECENT_CLICK = (x, y)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
@@ -275,7 +283,9 @@ async def click_relative_coordinates(x: float, y: float):
             vy = y
         if not HEADLESS:
             await page.bring_to_front()
+            await asyncio.sleep(0.1)
         await page._page.mouse.move(vx, vy)
+        await asyncio.sleep(0.1)
         await page._page.mouse.click(vx, vy)
         MOST_RECENT_CLICK = (vx, vy)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
@@ -292,8 +302,11 @@ async def type_text_character_by_character(text_input: str):
         if MOST_RECENT_CLICK is not None:
             vx, vy = MOST_RECENT_CLICK
             await page._page.mouse.move(vx, vy)
+            await asyncio.sleep(0.1)
             await page._page.mouse.click(vx, vy)
-        await page._page.keyboard.type(text_input, delay=10)
+            await asyncio.sleep(0.1)
+        await page._page.keyboard.type(text_input, delay=15)
+        time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         await run_screenshot()
         if MOST_RECENT_CLICK is not None:
             mark_screenshot_with_most_recent_click()

@@ -702,7 +702,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
             </FormControl>
           </Box>
           {/* Mute Button - Top Right (left of view switcher) */}
-          {!isMobile && <Box sx={{ position: 'absolute', top: 8, right: 200 }}>
+          {!isMobile && <Box sx={{ position: 'absolute', top: 6, left: 110 }}>
             <Tooltip title={isMuted ? "Unmute AI responses" : "Mute AI responses"}>
               <IconButton
                 onClick={handleMuteToggle}

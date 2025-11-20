@@ -65,6 +65,7 @@ async def start_ordering_session(
     )
     shared.session_ids_to_containers[session_id] = container
     print(shared.session_ids_to_containers)
+
     return SessionManagerToolCallResult(
         result=f"Session started as container ${container}. The session ID is {session_id}.",
         session_id=session_id,
@@ -75,17 +76,21 @@ async def update_ordering_session(
     session_id: str,
     updated_objective_spec: ObjectiveSpecification,
 ) -> Union[str, "SessionManagerToolCallResult"]:
+    
     user_without_special_characters = remove_special_characters(user)
-    response = requests.put(f"http://{user_without_special_characters}-session-{session_id}:9000/active-session", data=Session(
-        user=user,
-        session_id=session_id,
-        objective_spec=updated_objective_spec,
-    ))
+    try:
+        response = requests.put(f"http://{user_without_special_characters}-session-{session_id}:9000/active-session", data=Session(
+            user=user,
+            session_id=session_id,
+            objective_spec=updated_objective_spec,
+        ))
 
-    if response.status_code != 200:
-        return f"Failed to update session with ID {session_id} for user {user}: {response.text}"
+        if response.status_code != 200:
+            return f"Failed to update session with ID {session_id} for user {user}: {response.text}"
 
-    return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} updated.").model_dump_json()
+        return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} updated.").model_dump_json()
+    except Exception:
+        return SessionManagerToolCallResult(result=f"Error: Previous session was canceled and cannot be updated. Inform the user to refresh the page.").model_dump_json()
 
 async def cancel_ordering_session(
     user: str,
@@ -109,4 +114,5 @@ async def cancel_ordering_session(
     container.stop()
     container.remove()
     shared.session_ids_to_containers.pop(session_id)
+
     return SessionManagerToolCallResult(result=f"Session with ID {session_id} for user {user} canceled successfully.").model_dump_json()

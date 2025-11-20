@@ -73,7 +73,7 @@ def get_restaurant_locations_nearby(
         else:
             return f"No locations similar to the name {restaurant_name_or_food_chain} found nearby."
     except Exception as e:
-        traceback.format_exc()
+        print(traceback.format_exc())
         return str(e)
 
 if __name__ == "__main__":

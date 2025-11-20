@@ -29,7 +29,7 @@ from core.web.tool_calling.interface import ToolModes
 from core.session.session_utils import get_restaurant_locations_nearby
 
 BACKEND_LOGGER: logging.Logger = logging.getLogger("BACKEND_LOGGER")
-VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH: str = Path(__file__).parent.parent / "assets" / "video_placeholder.jpg"
+VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH: str = Path(__file__).parent.parent.parent / "assets" / "video_placeholder.jpg"
 
 class BrowserGeoLocation(BaseModel):
     latitude: float
@@ -341,6 +341,8 @@ class SessionManager:
                     user=prompt.user,
                     session_id=prompt.session_id,
                 )
+                if self.order_details.get(prompt.user, None) is None: self.order_details[prompt.user] = {}
+                self.order_details[prompt.user][ui_id] = OrderDetails()
                 print("Canceled session!")
             else:
                 result = "No function called."
@@ -446,8 +448,15 @@ class SessionManager:
         retry_count = 0
         max_retries = int(os.getenv("BROWSER_SCREENSHOT_MAX_RETRIES", "-1"))  # -1 means infinite
         
+        # If empty, send placeholder frame
+        placeholder_frame_bytes = cv2.imencode(
+            ".jpeg",
+            cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH)
+        )[1].tobytes()
+        
         BACKEND_LOGGER.info(f"[Session {session_id}] Initializing WebSocket connection to {session_url}")
 
+        frame_bytes = None
         while True:
             print("In loop for creating websocket...", flush=True)
             try:
@@ -461,11 +470,7 @@ class SessionManager:
                         try:
                             response = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                             if not response:
-                                # If empty, send placeholder frame
-                                frame_bytes = cv2.imencode(
-                                    ".jpeg",
-                                    cv2.imread(VIDEO_CONNECTION_PLACEHOLDER_FILE_PATH)
-                                )[1].tobytes()
+                                frame_bytes = placeholder_frame_bytes
                             else:
                                 frame_bytes = response
 
@@ -497,8 +502,16 @@ class SessionManager:
                 else:
                     BACKEND_LOGGER.error(
                         f"[Session {session_id}] ❌ WebSocket error (attempt #{retry_count}): {error_type}: {e}\n"
-                        f"{traceback.format_exc()}"
+                        # f"{traceback.format_exc()}"
                     )
+                
+                frame_bytes = placeholder_frame_bytes
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" +
+                    frame_bytes +
+                    b"\r\n"
+                )
 
             # finally:
             #     if max_retries != -1 and retry_count >= max_retries:

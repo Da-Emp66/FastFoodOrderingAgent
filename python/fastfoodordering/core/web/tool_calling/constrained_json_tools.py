@@ -135,6 +135,7 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
             screenshot_text = await screenshot_tool()
             screenshot_filepath = next(chain(re.findall(FILEPATH_REGEX, screenshot_text), [None]))
             if screenshot_filepath is None:
+                print("Screenshot_filepath could not be extracted via regex and is None", flush=True)
                 return None
             image = cv2.imread(screenshot_filepath)
             if screenshot_filepath != os.getenv("CURRENT_SCREENSHOT_PATH", None) and \
@@ -143,5 +144,6 @@ class ConstrainedBrowserToolCaller(ConstrainedToolCaller, BrowserToolCaller):
                 os.path.splitext(screenshot_filepath)[-1] in ["jpg", "jpeg", "png"]:
                     os.remove(screenshot_filepath)
         else:
+            print("Cannot screenshot. Screenshot tool is None", flush=True)
             image = None
         return image

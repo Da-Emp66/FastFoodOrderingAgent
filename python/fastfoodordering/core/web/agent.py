@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import enum
 import json
@@ -288,7 +289,8 @@ class BrowserAgentSystem(Agent):
         print("In process_request", flush=True)
         if self.configuration.screenshot_call_configuration.strategy == ScreenshotStrategy.ExternalRepeated:
             self.screenshot_thread_stopped = False
-            self.screenshot_thread = threading.Thread(target=self.screenshot_until_stopped)
+            self.screenshot_thread = threading.Thread(target=self.run_screenshot_until_stopped_thread)
+            self.screenshot_thread.start()
         async for task_result in self.iterate_task():
             print("Iteration complete.", flush=True)
             if task_result == FINISH_TOKEN:
@@ -303,13 +305,18 @@ class BrowserAgentSystem(Agent):
             else:
                 print(f"Task result: {task_result}")
 
+    def run_screenshot_until_stopped_thread(self):
+        return asyncio.run(self.screenshot_until_stopped())
+
     async def screenshot_until_stopped(self):
+        print(f"In self.screenshot_until_stopped, {self.screenshot_thread_stopped}", flush=True)
         while not self.screenshot_thread_stopped:
             screenshot = await self.tool_caller.screenshot()
+            # print("Screenshot taken!", flush=True)
             if self.configuration.browser_visibility_mode == BrowserVisibilityMode.Debug \
                 and screenshot is not None:
                 await self.show_browser(screenshot)
-            time.sleep(self.configuration.screenshot_call_configuration.spec.get("delay_seconds", 0.1))
+            await asyncio.sleep(self.configuration.screenshot_call_configuration.spec.get("delay_seconds", 0.1))
 
     async def show_browser(self, image: cv2.typing.MatLike):
         cv2.imshow('Browser Watcher', image)

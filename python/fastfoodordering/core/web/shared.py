@@ -8,6 +8,7 @@ from core.web.agent import BrowserAgentSystem
 from core.web.agent_interface import Agent
 from core.web.simple_agent import SimpleBrowserAgent
 from core.utils import remove_special_characters
+from core.web.simple_wendys import SimpleAPI
 
 # MAX_WEBSOCKET_FAILURES = os.getenv("MAX_WEBSOCKET_FAILURES", -1)
 MAX_TASK_ITERATIONS = os.getenv("MAX_TASK_ITERATIONS", -1)
@@ -30,23 +31,39 @@ if "browseruse" in _filtered_browser_agent_type:
     browser_agent.configuration.screenshot_call_configuration.strategy = "externalrepeated"
     print("SimpleBrowserAgent instantiated!")
 elif "base" in _filtered_browser_agent_type and "gpt" in _filtered_browser_agent_type:
-    pass
+    # Reset the model, API key, and base URL to be the real OpenAI keys from the environment,
+    # but default to local configurations if these are not set
+    os.environ["MODEL"] = os.getenv("REAL_OPENAI_MODEL", os.getenv("MODEL", "openai/models/ggml-model-Q4_K_M.gguf"))
+    os.environ["OPENAI_API_KEY"] = os.getenv("REAL_OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "sk-1234"))
+    os.environ["OPENAI_BASE_URL"] = os.getenv("REAL_OPENAI_BASE_URL", os.getenv("OPENAI_BASE_URL", "http://localhost:8000"))
+
+    WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-simple-import.yaml")
+    print("Using BROWSER_AGENT_TYPE base = Instantiating BrowserAgentSystem")
+    browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
+    print("BrowserAgentSystem instantiated!")
 elif "base" in _filtered_browser_agent_type or "minicpm" in _filtered_browser_agent_type:
     WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-simple-import.yaml")
     print("Using BROWSER_AGENT_TYPE base = Instantiating BrowserAgentSystem")
     browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
     print("BrowserAgentSystem instantiated!")
 elif "api" in _filtered_browser_agent_type:
+    WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "simple-wendys-api.yaml")
     os.environ["SCREENSHOT_STRATEGY"] = "externalrepeated" # TODO: SUPPORT THIS IN SIMPLEBROWSERAGENT AND API
-    pass
+    browser_agent = SimpleAPI(WEB_AGENT_CONFIG_PATH)
+    browser_agent.configuration.screenshot_call_configuration.strategy = "externalrepeated"
 elif WEB_AGENT_CONFIG_PATH is not None:
     try:
         browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
     except Exception as e1:
         try:
             browser_agent = SimpleBrowserAgent(WEB_AGENT_CONFIG_PATH)
+            browser_agent.configuration.screenshot_call_configuration.strategy = "externalrepeated"
         except Exception as e2:
-            raise ValueError(f"Could not instantiate browser_agent of type BrowserAgentSystem or SimpleBrowserAgent from configuration: {WEB_AGENT_CONFIG_PATH}\nError1: {e1}\nError2: {e2}")
+            try:
+                browser_agent = SimpleAPI(WEB_AGENT_CONFIG_PATH)
+                browser_agent.configuration.screenshot_call_configuration.strategy = "externalrepeated"
+            except Exception as e3:
+                raise ValueError(f"Could not instantiate browser_agent of type BrowserAgentSystem, SimpleBrowserAgent, or SimpleAPI from configuration: {WEB_AGENT_CONFIG_PATH}\nError1: {e1}\nError2: {e2}\nError3: {e3}")
 else:
     raise NotImplementedError(f"Could not determine agent type for mode '{BROWSER_AGENT_TYPE}' interpreted as -> '{_filtered_browser_agent_type}'. Also, no WEB_AGENT_CONFIG_PATH passed. Failing to instantiate agent.")
 

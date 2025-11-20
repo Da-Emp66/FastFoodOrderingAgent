@@ -49,6 +49,7 @@ async def navigate(url: str):
     print("In function call `navigate`...")
     try:
         await page.goto(url)
+        await asyncio.sleep(0.1)
         await page._page.context.grant_permissions(["geolocation"])
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         return "success"
@@ -87,6 +88,7 @@ async def click_element_by_box_label_number(number: int):
         center_x = ((item.bbox[0] + item.bbox[2]) / 2) * viewport_width
         center_y = ((item.bbox[1] + item.bbox[3]) / 2) * viewport_height
         pyautogui.moveTo(center_x, center_y)
+        await asyncio.sleep(0.1)
         pyautogui.click(center_x, center_y)
         MOST_RECENT_CLICK = (center_x, center_y)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
@@ -111,8 +113,11 @@ async def type_text_by_box_label_number(number: int, text: str):
         center_x = ((item.bbox[0] + item.bbox[2]) / 2) * viewport_width
         center_y = ((item.bbox[1] + item.bbox[3]) / 2) * viewport_height
         pyautogui.moveTo(center_x, center_y)
+        await asyncio.sleep(0.1)
         pyautogui.click(center_x, center_y)
-        pyautogui.write(text)
+        await asyncio.sleep(0.1)
+        pyautogui.typewrite(text, interval=0.05)
+        await asyncio.sleep(0.1)
         pyautogui.press('enter')
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         MOST_RECENT_CLICK = center_x, center_y
@@ -169,7 +174,8 @@ async def type_text_character_by_character(text_input: str):
         if MOST_RECENT_CLICK is not None:
             exact_x, exact_y = MOST_RECENT_CLICK
             pyautogui.click(exact_x, exact_y)
-        pyautogui.typewrite(text_input)
+            await asyncio.sleep(0.1)
+        pyautogui.typewrite(text_input, interval=0.05)
         run_screenshot()
         return "success"
     except Exception as e:

@@ -2,25 +2,27 @@ tool_mode: constrained
 tools:
   custom_tools:
     - function_name: screenshot
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver_wendys_api.py
     - function_name: navigate
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver_wendys_api.py
     - function_name: scroll
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver.py
     - function_name: click_element_by_box_label_number
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver_wendys_api.py
     - function_name: type_text_by_box_label_number
-      import_spec: core/web/toolserver_desktop.py
-    # - function_name: null
+      import_spec: core/web/toolserver_wendys_api.py
     
     - function_name: click_relative_coordinates
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver_wendys_api.py
     - function_name: type_text_character_by_character
-      import_spec: core/web/toolserver_desktop.py
+      import_spec: core/web/toolserver_wendys_api.py
+
+    - function_name: order_wendys_tool
+      import_spec: core/web/toolserver_wendys_api.py
   import_hooks:
     - spec:
         function_name: init_globals
-        import_spec: core/web/toolserver_desktop.py
+        import_spec: core/web/toolserver_wendys_api.py
       args: []
       kwargs: {}
   browser_visibility:
@@ -41,8 +43,6 @@ tools:
           - Papa John's: https://www.papajohns.com/
           - Pizza Hut: https://www.pizzahut.com/
           - Hungry Howie's: https://www.hungryhowies.com/
-        
-        IMPORTANT: If asked to order from one of the above restuarants or food chains, navigate DIRECTLY to the associated site url. YOU SHOULD NOT HAVE TO GO TO GOOGLE OR ANOTHER SEARCH ENGINE.
   tool_system_prompt: |
     You are an expert browser operator. Your goal is to select the best tool based on the current task. 
   tool_selection_user_prompt_format: |
@@ -61,11 +61,10 @@ tools:
     Banned Tools: {banned_tools}
     Selected tool is {name}. Now determine the arguments:
 
-planner_type: dspy
-planner:
-  visibility_settings:
-    tools_visible: True
+task_prompt_template: |
+  Task: `{overall_goal}`
+  Rules:
+    - Stop and return done when you reach the payment screen.
+      Don't fill out my payment information and don't actually order the food, but do add everything to the order and get to the payment screen.
+      You are allowed to fill in all text fields except for those directly on the payment screen, which you are not allowed to fill in.
 browser_visibility_mode: ${BROWSER_VISIBILITY_MODE}
-parser:
-  parser_uri: http://${PARSER_HOST}:${PARSER_PORT}
-  parser_mode: ${PARSER_MODE}
