@@ -32,6 +32,8 @@ import {
   VideocamOff,
   Fullscreen,
   FullscreenExit,
+  VolumeUp,
+  VolumeOff,
   // Close
 } from '@mui/icons-material';
 import { sendSessionChat, getScreenshotStreamUrl, sendBrowserClick, sendBrowserType } from '../services/api';
@@ -124,6 +126,18 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   // Detect if mobile based on screen width (simple check)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [view, setView] = useState('Mobile View');
+  const [isMuted, setIsMuted] = useState(() => {
+    // Load mute state from localStorage
+    const saved = localStorage.getItem('tts_muted');
+    return saved === 'true';
+  });
+
+  // Save mute state to localStorage whenever it changes
+  const handleMuteToggle = () => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    localStorage.setItem('tts_muted', String(newMutedState));
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -179,7 +193,11 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
         timestamp: new Date()
       };
       setMessages(prev => [...prev, aiMessage]);
-      speak(response.response);
+
+      // Only speak if not muted
+      if (!isMuted) {
+        speak(response.response);
+      }
 
     } catch (error) {
       console.error('Error sending message:', error);
@@ -683,6 +701,26 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
               </Select>
             </FormControl>
           </Box>
+          {/* Mute Button - Top Right (left of view switcher) */}
+          {!isMobile && <Box sx={{ position: 'absolute', top: 8, right: 200 }}>
+            <Tooltip title={isMuted ? "Unmute AI responses" : "Mute AI responses"}>
+              <IconButton
+                onClick={handleMuteToggle}
+                size="small"
+                sx={{
+                  color: 'white',
+                  backgroundColor: isMuted ? 'rgba(244, 67, 54, 0.8)' : 'rgba(76, 175, 80, 0.8)',
+                  '&:hover': {
+                    backgroundColor: isMuted ? 'rgba(244, 67, 54, 1)' : 'rgba(76, 175, 80, 1)',
+                  }
+                }}
+              >
+                {isMuted ? <VolumeOff fontSize="small" /> : <VolumeUp fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </Box>}
+
+          {/* View Switcher - Top Right */}
           {!isMobile && <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
               <Typography sx={{ color: 'whitesmoke' }}>{view}</Typography>
@@ -695,7 +733,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
             </Stack>
           </Box>}
 
-          <Typography variant="h6" sx={{ marginTop: '18px', color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ marginTop: '35px', color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
             Fast Food Ordering Agent
           </Typography>
         </Box>
@@ -773,6 +811,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
           flex: 1,
           px: 2,
           pb: 2,
+          pt: 2,
           width: '100%',
         }}>
           <Box sx={{

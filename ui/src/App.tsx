@@ -3,7 +3,7 @@ import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import SignIn from './components/SignIn';
 import HungryInput from './components/HungryInput';
 import VoiceInterface from './components/VoiceInterface';
-// import TTS from './components/TTS'; 
+// import TTS from './components/TTS';
 
 type AppState = "signin" | "hungry" | "voice";
 
@@ -50,10 +50,14 @@ function App() {
   // ✅ New effect: when entering 'voice' state, automatically trigger TTS
   useEffect(() => {
     if (currentState === 'voice' && hungryQuery) {
-      const utterance = new SpeechSynthesisUtterance(
-        `Okay, I heard you say ${hungryQuery}. Let's start working on your order.`
-      );
-      window.speechSynthesis.speak(utterance);
+      // Check if muted before speaking
+      const isMuted = localStorage.getItem('tts_muted') === 'true';
+      if (!isMuted) {
+        const utterance = new SpeechSynthesisUtterance(
+          `Okay, I heard you say ${hungryQuery}. Let's start working on your order.`
+        );
+        window.speechSynthesis.speak(utterance);
+      }
     }
   }, [currentState, hungryQuery]);
 
