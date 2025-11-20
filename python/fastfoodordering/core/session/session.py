@@ -317,7 +317,7 @@ class SessionManager:
             if generated_tool.spec.tool == "start_ordering_session":
                 print("Starting session...")
                 result = await start_ordering_session(
-                    exact_user_query=prompt.prompt,
+                    exact_user_query=f"Order the food from the website of the restaurant or food chain desired. The details are as follows:\n{json.dumps(current_known_order_details, indent=2, cls=BaseModelJSONEncoder)}",
                     user=prompt.user,
                     current_geolocation=prompt.current_geolocation,
                     session_mode=prompt.ordering_mode,
@@ -330,7 +330,7 @@ class SessionManager:
                     user=prompt.user,
                     session_id=prompt.session_id,
                     updated_objective_spec=ObjectiveSpecification(
-                        objective=prompt.prompt,
+                        objective=f"Order the food from the website of the restaurant or food chain desired. The details are as follows:\n{json.dumps(current_known_order_details, indent=2, cls=BaseModelJSONEncoder)}",
                         extracted_order_details=current_known_order_details,
                     )
                 )
@@ -412,16 +412,16 @@ class SessionManager:
     
     async def extract_order_details(self, prompt: str, current_known_order_details: OrderDetails, force_current_order_detail_preservation: bool = False) -> OrderDetails:
         if force_current_order_detail_preservation:
-            extracted = self.tool_caller.extract_via_schema(
+            extracted = (await self.tool_caller.extract_via_schema(
                 prompt,
                 schema_cls=OrderDetails,
                 known_details=current_known_order_details.model_dump_json(indent=2),
-            ).model_dump()
+            )).model_dump()
             for key, val in extracted.items():
                 if val is not None:
                     setattr(current_known_order_details, key, val)
         else:
-            current_known_order_details = self.tool_caller.extract_via_schema(
+            current_known_order_details = await self.tool_caller.extract_via_schema(
                 prompt,
                 schema_cls=OrderDetails,
                 known_details=current_known_order_details.model_dump_json(indent=2),
@@ -435,6 +435,7 @@ class SessionManager:
         return current_known_order_details
     
     async def browser_screenshot_generator(self, user: str, session_id: str):
+        print("In browser_screenshot_generator...", flush=True)
         user_without_special_characters = remove_special_characters(user)
         container_spec = populate_environment_specifications(
             self.configuration.web_agent_spec,
@@ -448,6 +449,7 @@ class SessionManager:
         BACKEND_LOGGER.info(f"[Session {session_id}] Initializing WebSocket connection to {session_url}")
 
         while True:
+            print("In loop for creating websocket...", flush=True)
             try:
                 BACKEND_LOGGER.info(f"[Session {session_id}] Attempting WebSocket connection (attempt #{retry_count + 1})...")
                 BACKEND_LOGGER.info(f"Websocket connection is `{session_url}`")

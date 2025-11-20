@@ -36,6 +36,8 @@ tools:
           - Papa John's: https://www.papajohns.com/
           - Pizza Hut: https://www.pizzahut.com/
           - Hungry Howie's: https://www.hungryhowies.com/
+        
+        IMPORTANT: If asked to order from one of the above restuarants or food chains, navigate DIRECTLY to the associated site url. YOU SHOULD NOT HAVE TO GO TO GOOGLE OR ANOTHER SEARCH ENGINE.
   tool_system_prompt: |
     You are an expert browser operator. Your goal is to select the best tool based on the current task. 
   tool_selection_user_prompt_format: |

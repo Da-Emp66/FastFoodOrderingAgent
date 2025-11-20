@@ -11,11 +11,14 @@ from core.utils import place_coordinate_on_image
 from core.web.parser import get_item_by_label_number
 import shared
 
+# HEADLESS = True # For local testing
+HEADLESS = False # For production Docker
+
 # Default browser geolocation is UCF, Orlando
 # Accuracy denotes coordinate accuracy in meters.
 BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
-    "latitude": 28.6016,
-    "longitude": -81.2005,
+    "latitude": 28.5383,
+    "longitude": -81.3792,
     "accuracy": 100
 }'''))
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
@@ -94,7 +97,8 @@ async def click_element_by_box_label_number(number: int):
         # OmniParser labeled the VISIBLE screenshot, so we don't add scroll position
         vx = center_x_relative * page._page.viewport_size['width']
         vy = center_y_relative * page._page.viewport_size['height']
-        await page.bring_to_front()
+        if not HEADLESS:
+            await page.bring_to_front()
         await page._page.mouse.move(vx, vy)
         await page._page.mouse.click(vx, vy)
         # Store absolute click coordinates for visual feedback
@@ -240,7 +244,8 @@ async def click_coordinates(x: float, y: float):
     global page
     # print("In function call `click_coordinates`...")
     try:
-        await page.bring_to_front()
+        if not HEADLESS:
+            await page.bring_to_front()
         await page._page.mouse.move(x, y)
         await page._page.mouse.click(x, y)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
@@ -257,7 +262,8 @@ async def click_relative_coordinates(x: float, y: float):
     try:
         vx = x * page._page.viewport_size['width']
         vy = y * page._page.viewport_size['height']
-        await page.bring_to_front()
+        if not HEADLESS:
+            await page.bring_to_front()
         await page._page.mouse.move(vx, vy)
         await page._page.mouse.click(vx, vy)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
@@ -288,8 +294,7 @@ async def init_globals():
         model_name=os.getenv("MODEL_NAME"),
         model_api_key=os.getenv("OPENAI_API_KEY"),
         local_browser_launch_options={
-            # "headless": True, # For production Docker
-            "headless": False, # For local testing
+            "headless": HEADLESS,
             "ignoreDefaultArgs": ['--hide-scrollbars'],
         }
     )

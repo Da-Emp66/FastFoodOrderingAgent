@@ -677,7 +677,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
                 }}
               >
                 <MenuItem value="GUI-Browser-Use (BU)">🤖🥇 BU GUI Mode</MenuItem>
-                <MenuItem value="GUI-Base-Agent (GPT-4V)">🤖🥈 GPT GUI Mode</MenuItem>
+                <MenuItem disabled value="GUI-Base-Agent (GPT-4V)">🤖🥈 GPT GUI Mode</MenuItem>
                 <MenuItem value="GUI-Base-Agent (MiniCPM-4.5)">🤖🥉 MCPM GUI Mode</MenuItem>
                 <MenuItem value="API">⚡🍔+🍟 API (Wendy's only)</MenuItem>
               </Select>
