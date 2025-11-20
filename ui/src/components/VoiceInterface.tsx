@@ -126,7 +126,18 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
   // Detect if mobile based on screen width (simple check)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [view, setView] = useState('Mobile View');
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => {
+    // Load mute state from localStorage
+    const saved = localStorage.getItem('tts_muted');
+    return saved === 'true';
+  });
+
+  // Save mute state to localStorage whenever it changes
+  const handleMuteToggle = () => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    localStorage.setItem('tts_muted', String(newMutedState));
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -694,7 +705,7 @@ export default function VoiceInterface({ initialQuery = '' }: VoiceInterfaceProp
           {!isMobile && <Box sx={{ position: 'absolute', top: 8, right: 200 }}>
             <Tooltip title={isMuted ? "Unmute AI responses" : "Mute AI responses"}>
               <IconButton
-                onClick={() => setIsMuted(!isMuted)}
+                onClick={handleMuteToggle}
                 size="small"
                 sx={{
                   color: 'white',

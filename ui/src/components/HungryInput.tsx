@@ -8,9 +8,11 @@ import {
   Fab,
   Button,
   Chip,
-  CircularProgress
+  CircularProgress,
+  IconButton,
+  Tooltip
 } from '@mui/material';
-import { Search, Mic, MicOff, Send, LocationOn } from '@mui/icons-material';
+import { Search, Mic, MicOff, Send, LocationOn, VolumeUp, VolumeOff } from '@mui/icons-material';
 import { useGeolocation } from '../hooks/useGeolocation';
 
 interface HungryInputProps {
@@ -20,7 +22,19 @@ interface HungryInputProps {
 export default function HungryInput({ onSubmit }: HungryInputProps) {
   const [query, setQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => {
+    // Load mute state from localStorage
+    const saved = localStorage.getItem('tts_muted');
+    return saved === 'true';
+  });
   const recognitionRef = useRef<any | null>(null); // SpeechRecognition | null
+
+  // Save mute state to localStorage whenever it changes
+  const handleMuteToggle = () => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    localStorage.setItem('tts_muted', String(newMutedState));
+  };
 
   // Get user's geolocation
   const { location: geolocation, locationName, error: geoError, loading: geoLoading } = useGeolocation();
@@ -249,46 +263,68 @@ export default function HungryInput({ onSubmit }: HungryInputProps) {
                   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
                 }}
               >
-        {/* Location Chip - Top Right */}
-        <Box sx={{ width: '100%', display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          {geoLoading && (
-            <Chip
-              icon={<CircularProgress size={16} sx={{ color: 'white !important' }} />}
-              label="Getting location..."
-              size="small"
-              sx={{
-                backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                color: 'white',
-                fontSize: '12px'
-              }}
-            />
-          )}
-          {geolocation && !geoLoading && locationName && (
-            <Chip
-              icon={<LocationOn sx={{ color: 'white !important' }} />}
-              label={locationName}
-              size="small"
-              sx={{
-                backgroundColor: 'rgba(76, 175, 80, 0.3)',
-                color: 'white',
-                fontSize: '12px',
-                border: '1px solid rgba(255, 255, 255, 0.3)'
-              }}
-            />
-          )}
-          {geoError && !geoLoading && (
-            <Chip
-              icon={<LocationOn sx={{ color: 'white !important' }} />}
-              label="No location"
-              size="small"
-              sx={{
-                backgroundColor: 'rgba(244, 67, 54, 0.3)',
-                color: 'white',
-                fontSize: '12px',
-                border: '1px solid rgba(255, 255, 255, 0.3)'
-              }}
-            />
-          )}
+        {/* Top Bar - Mute Button (Left) and Location Chip (Right) */}
+        <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          {/* Mute Button - Top Left */}
+          <Box>
+            <Tooltip title={isMuted ? "Unmute AI responses" : "Mute AI responses"}>
+              <IconButton
+                onClick={handleMuteToggle}
+                size="small"
+                sx={{
+                  color: 'white',
+                  backgroundColor: isMuted ? 'rgba(244, 67, 54, 0.8)' : 'rgba(76, 175, 80, 0.8)',
+                  '&:hover': {
+                    backgroundColor: isMuted ? 'rgba(244, 67, 54, 1)' : 'rgba(76, 175, 80, 1)',
+                  }
+                }}
+              >
+                {isMuted ? <VolumeOff fontSize="small" /> : <VolumeUp fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          {/* Location Chip - Top Right */}
+          <Box>
+            {geoLoading && (
+              <Chip
+                icon={<CircularProgress size={16} sx={{ color: 'white !important' }} />}
+                label="Getting location..."
+                size="small"
+                sx={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+            )}
+            {geolocation && !geoLoading && locationName && (
+              <Chip
+                icon={<LocationOn sx={{ color: 'white !important' }} />}
+                label={locationName}
+                size="small"
+                sx={{
+                  backgroundColor: 'rgba(76, 175, 80, 0.3)',
+                  color: 'white',
+                  fontSize: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.3)'
+                }}
+              />
+            )}
+            {geoError && !geoLoading && (
+              <Chip
+                icon={<LocationOn sx={{ color: 'white !important' }} />}
+                label="No location"
+                size="small"
+                sx={{
+                  backgroundColor: 'rgba(244, 67, 54, 0.3)',
+                  color: 'white',
+                  fontSize: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.3)'
+                }}
+              />
+            )}
+          </Box>
         </Box>
 
         {/* Title with Burger - Centered and Lower */}

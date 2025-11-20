@@ -50,10 +50,14 @@ function App() {
   // ✅ New effect: when entering 'voice' state, automatically trigger TTS
   useEffect(() => {
     if (currentState === 'voice' && hungryQuery) {
-      const utterance = new SpeechSynthesisUtterance(
-        `Okay, I heard you say ${hungryQuery}. Let's start working on your order.`
-      );
-      window.speechSynthesis.speak(utterance);
+      // Check if muted before speaking
+      const isMuted = localStorage.getItem('tts_muted') === 'true';
+      if (!isMuted) {
+        const utterance = new SpeechSynthesisUtterance(
+          `Okay, I heard you say ${hungryQuery}. Let's start working on your order.`
+        );
+        window.speechSynthesis.speak(utterance);
+      }
     }
   }, [currentState, hungryQuery]);
 
