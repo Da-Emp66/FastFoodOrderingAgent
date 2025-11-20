@@ -22,6 +22,7 @@ BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
     "accuracy": 100
 }'''))
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
+# Most recent click in exact pixelwise coordinates
 MOST_RECENT_CLICK = None
 
 page: StagehandPage = None
@@ -210,46 +211,52 @@ async def run_screenshot():
         await page._page.screenshot(path=path, full_page=False) # TODO: Check fullPage=True vs. False for scroll coordinates
     except Exception as e:
         return str(e)
+    
+def mark_screenshot_with_most_recent_click():
+    global MOST_RECENT_CLICK
+    path = shared.CURRENT_SCREENSHOT_PATH
+    # Add visual marker for the most recent click
+    if MOST_RECENT_CLICK is not None:
+        # MOST_RECENT_CLICK now stores absolute viewport coordinates (vx, vy)
+        # We need to convert to relative coordinates (0-1) for place_coordinate_on_image
+        viewport_width = page._page.viewport_size['width']
+        viewport_height = page._page.viewport_size['height']
+        relative_x = MOST_RECENT_CLICK[0] / viewport_width
+        relative_y = MOST_RECENT_CLICK[1] / viewport_height
+        cv2.imwrite(
+            path,
+            place_coordinate_on_image(
+                cv2.imread(path),
+                coordinate=(relative_x, relative_y),
+                coordinate_system='relative'
+            )
+        )
 
 @mcp.tool
 async def screenshot():
-    global page, MOST_RECENT_CLICK
+    global page
     # print("In function call `screenshot`...")
     try:
         path = shared.CURRENT_SCREENSHOT_PATH
         await run_screenshot()
-
-        # Add visual marker for the most recent click
-        if MOST_RECENT_CLICK is not None:
-            # MOST_RECENT_CLICK now stores absolute viewport coordinates (vx, vy)
-            # We need to convert to relative coordinates (0-1) for place_coordinate_on_image
-            viewport_width = page._page.viewport_size['width']
-            viewport_height = page._page.viewport_size['height']
-            relative_x = MOST_RECENT_CLICK[0] / viewport_width
-            relative_y = MOST_RECENT_CLICK[1] / viewport_height
-            cv2.imwrite(
-                path,
-                place_coordinate_on_image(
-                    cv2.imread(path),
-                    coordinate=(relative_x, relative_y),
-                    coordinate_system='relative'
-                )
-            )
+        mark_screenshot_with_most_recent_click()
         return path
     except Exception as e:
         return str(e)
 
 @mcp.tool
-async def click_coordinates(x: float, y: float):
-    global page
-    # print("In function call `click_coordinates`...")
+async def click_exact_pixel_coordinates(x: float, y: float):
+    global page, MOST_RECENT_CLICK
+    # print("In function call `click_exact_pixel_coordinates`...")
     try:
         if not HEADLESS:
             await page.bring_to_front()
         await page._page.mouse.move(x, y)
         await page._page.mouse.click(x, y)
+        MOST_RECENT_CLICK = (x, y)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         await run_screenshot()
+        mark_screenshot_with_most_recent_click()
         return "success"
     except Exception as e:
         return str(e)
@@ -257,27 +264,40 @@ async def click_coordinates(x: float, y: float):
 @mcp.tool
 async def click_relative_coordinates(x: float, y: float):
     """Click an area by its relative coordinates (x,y) where x and y are both in the range [0.0, 1.0]"""
-    global page
+    global page, MOST_RECENT_CLICK
     # print("In function call `click_relative_coordinates`...")
     try:
-        vx = x * page._page.viewport_size['width']
-        vy = y * page._page.viewport_size['height']
+        if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+            vx = x * page._page.viewport_size['width']
+            vy = y * page._page.viewport_size['height']
+        else:
+            vx = x
+            vy = y
         if not HEADLESS:
             await page.bring_to_front()
         await page._page.mouse.move(vx, vy)
         await page._page.mouse.click(vx, vy)
+        MOST_RECENT_CLICK = (vx, vy)
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         await run_screenshot()
+        mark_screenshot_with_most_recent_click()
         return "success"
     except Exception as e:
         return str(e)
     
 @mcp.tool
 async def type_text_character_by_character(text_input: str):
-    global page
+    global page, MOST_RECENT_CLICK
     try:
-        await page._page.keyboard.type(text_input)
+        if MOST_RECENT_CLICK is not None:
+            vx, vy = MOST_RECENT_CLICK
+            await page._page.mouse.move(vx, vy)
+            await page._page.mouse.click(vx, vy)
+        await page._page.keyboard.type(text_input, delay=10)
         await run_screenshot()
+        if MOST_RECENT_CLICK is not None:
+            mark_screenshot_with_most_recent_click()
+        return "success"
     except Exception as e:
         return str(e)
 

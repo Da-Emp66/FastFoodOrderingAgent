@@ -1,8 +1,11 @@
 import asyncio
+import json
+import os
 import threading
 import time
 from typing import Any, AsyncGenerator, Dict, Optional, Union
 from browser_use import Agent, Browser, BrowserProfile, ChatBrowserUse
+
 from pydantic import BaseModel
 
 from core.utils import from_config, FINISH_TOKEN
@@ -14,6 +17,12 @@ from core.web.tool_calling.dspy_tools import DSPyBrowserToolCaller
 from core.web.tool_calling.stagehand_tools import StageHandBrowserToolCaller
 from core.web.browser_utils import ScreenshotConfiguration, ScreenshotStrategy
 from core.web.interface import BrowserVisibilityMode
+
+BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
+    "latitude": 28.5383,
+    "longitude": -81.3792,
+    "accuracy": 100
+}'''))
 
 class SimpleBrowserAgentConfiguration(BaseModel):
     task_prompt_template: str
@@ -44,9 +53,10 @@ class SimpleBrowserAgent:
                 user_data_dir=None,
                 headless=False,
                 chromium_sandbox=False,
-                args=["--disable-gpu"]
+                args=["--disable-gpu"],
             ))
-            
+            # context = self.browser._context  # (or another way to access Playwright context)
+            # await context.set_geolocation(BROWSER_GEOLOCATION)
         if self.llm is None:
             self.llm = ChatBrowserUse()
         return await self.process_request()

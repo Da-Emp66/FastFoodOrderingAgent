@@ -9,12 +9,12 @@ tools:
       import_spec: core/web/toolserver.py
     - function_name: get_element_coordinates_by_text
       import_spec: core/web/toolserver.py
-    - function_name: click_coordinates
+    - function_name: click_exact_pixel_coordinates
       import_spec: core/web/toolserver.py
     - function_name: fill_text_box
       import_spec: core/web/toolserver.py
 
-    - function_name: click_coordinates
+    - function_name: click_exact_pixel_coordinates
       import_spec: core/web/toolserver.py
     - function_name: click_relative_coordinates
       import_spec: core/web/toolserver.py

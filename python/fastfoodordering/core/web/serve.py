@@ -95,6 +95,13 @@ async def handle_click(coordinates: BrowserClickCoordinates):
         )
         result = await agent.tool_caller.call_tool(tool)
 
+        screenshot_tool_name = "screenshot"
+        usable = agent.tool_caller.tools.get(screenshot_tool_name, None)
+        if usable is None:
+            return Response(status_code=400, content="Tool to screenshot not available.")
+        tool = GeneratedTool(usable=usable, spec=GeneratedToolSpec(tool=tool_name, args={}))
+        await agent.tool_caller.call_tool(tool)
+
         # # Get the browser agent's tool caller
         # agent = shared.this_session.browser_agent
         # # Get viewport size from the page
@@ -132,6 +139,13 @@ async def handle_type(text_input: BrowserTextInput):
             )
         )
         result = await agent.tool_caller.call_tool(tool)
+
+        screenshot_tool_name = "screenshot"
+        usable = agent.tool_caller.tools.get(screenshot_tool_name, None)
+        if usable is None:
+            return Response(status_code=400, content="Tool to screenshot not available.")
+        tool = GeneratedTool(usable=usable, spec=GeneratedToolSpec(tool=tool_name, args={}))
+        await agent.tool_caller.call_tool(tool)
 
         # page = agent.tool_caller.page if hasattr(agent.tool_caller, 'page') else None
         # if page is None:

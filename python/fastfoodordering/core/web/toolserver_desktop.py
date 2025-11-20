@@ -20,6 +20,7 @@ BROWSER_GEOLOCATION = json.loads(os.getenv("BROWSER_GEOLOCATION", '''{
     "accuracy": 100
 }'''))
 GLOBAL_BROWSER_LOAD_WAIT_SLEEP = 1.0
+# Most recent click in exact pixelwise coordinates
 MOST_RECENT_CLICK = None
 
 page: StagehandPage = None
@@ -38,19 +39,10 @@ def get_viewport_size():
         print(f"Error retrieving viewport size: {e}")
         return None, None
     
-@mcp.tool
-async def screenshot():
-    import pyautogui
-    try:
-        path = shared.CURRENT_SCREENSHOT_PATH
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        pyautogui.screenshot(path)
-        if MOST_RECENT_CLICK is not None:
-            cv2.imwrite(path, place_coordinate_on_image(cv2.imread(path), coordinate=MOST_RECENT_CLICK))
-        return path
-    except Exception as e:
-        return str(e)
-    
+#####################################################################
+### Tools for LLM
+#####################################################################
+
 @mcp.tool
 async def navigate(url: str):
     global page
@@ -125,6 +117,61 @@ async def type_text_by_box_label_number(number: int, text: str):
         time.sleep(GLOBAL_BROWSER_LOAD_WAIT_SLEEP)
         MOST_RECENT_CLICK = center_x, center_y
         return f"[✅] Success: Filled element at ({center_x}, {center_y}) with text: {text}"
+    except Exception as e:
+        return str(e)
+
+#####################################################################
+### Tools required for integration, not necessarily given to LLM
+#####################################################################
+
+def run_screenshot() -> str:
+    import pyautogui
+    global MOST_RECENT_CLICK
+    path = shared.CURRENT_SCREENSHOT_PATH
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    pyautogui.screenshot(path)
+    if MOST_RECENT_CLICK is not None:
+        cv2.imwrite(path, place_coordinate_on_image(cv2.imread(path), coordinate=MOST_RECENT_CLICK))
+    return path
+
+@mcp.tool
+async def screenshot():
+    try:
+        path = run_screenshot()
+        return path
+    except Exception as e:
+        return str(e)
+
+@mcp.tool
+async def click_relative_coordinates(x: float, y: float):
+    import pyautogui
+    global MOST_RECENT_CLICK
+    try:
+        if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+            viewport_width, viewport_height = get_viewport_size()
+            exact_x = x * viewport_width
+            exact_y = y * viewport_height
+        else:
+            exact_x = x
+            exact_y = y
+        pyautogui.click(exact_x, exact_y)
+        MOST_RECENT_CLICK = (exact_x, exact_y)
+        run_screenshot()
+        return "success"
+    except Exception as e:
+        return str(e)
+
+@mcp.tool
+async def type_text_character_by_character(text_input: str):
+    import pyautogui
+    global MOST_RECENT_CLICK
+    try:
+        if MOST_RECENT_CLICK is not None:
+            exact_x, exact_y = MOST_RECENT_CLICK
+            pyautogui.click(exact_x, exact_y)
+        pyautogui.typewrite(text_input)
+        run_screenshot()
+        return "success"
     except Exception as e:
         return str(e)
 

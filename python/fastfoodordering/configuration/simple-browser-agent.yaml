@@ -12,6 +12,11 @@ tools:
     - function_name: type_text_by_box_label_number
       import_spec: core/web/toolserver_desktop.py
     # - function_name: null
+    
+    - function_name: click_relative_coordinates
+      import_spec: core/web/toolserver.py
+    - function_name: type_text_character_by_character
+      import_spec: core/web/toolserver.py
   import_hooks:
     - spec:
         function_name: init_globals_for_screenshot_only

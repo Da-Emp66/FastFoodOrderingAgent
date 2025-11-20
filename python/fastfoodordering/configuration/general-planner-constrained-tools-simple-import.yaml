@@ -16,7 +16,7 @@ tools:
     - function_name: fill_all_text_boxes_with
       import_spec: core/web/toolserver.py
 
-    - function_name: click_coordinates
+    - function_name: click_exact_pixel_coordinates
       import_spec: core/web/toolserver.py
     - function_name: click_relative_coordinates
       import_spec: core/web/toolserver.py
