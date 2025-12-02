@@ -64,9 +64,9 @@ docker-compose --env-file .env.instance2 down
 ## Accessing the Instances
 
 ### Instance 1
-- Web UI: https://localhost or https://localhost:443
-- LLM API: http://localhost:8000
-- Admin Panel: https://localhost:8443
+- Web UI: https://localhost or https://localhost:30443
+- LLM API: http://localhost:38000
+- Admin Panel: https://localhost:38443
 - Logs (Dozzle): Accessible via nginx proxy
 
 ### Instance 2
