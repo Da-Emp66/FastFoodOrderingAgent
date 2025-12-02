@@ -72,7 +72,7 @@ You should see:
 ### Protected Access (Authentication Required)
 - **Logs (Dozzle)**: `https://67.8.48.44/logs`
 - **Session Manager API**: `https://67.8.48.44/api/session`
-- **Admin Panel**: `https://67.8.48.44:8443` (optional)
+- **Admin Panel**: `https://67.8.48.44:38443` (optional)
 
 ## SSL Certificate Options
 

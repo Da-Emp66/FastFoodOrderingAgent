@@ -172,7 +172,7 @@ For production use with many users, add an nginx load balancer:
 
 ```nginx
 upstream instances {
-    server localhost:5000;  # Instance 1
+    server localhost:35000;  # Instance 1
     server localhost:5001;  # Instance 2
     server localhost:5002;  # Instance 3
     # Add more as needed
@@ -218,7 +218,7 @@ docker stats --filter "label=com.docker.compose.project=fastfood-instance-1"
 ./manage-instances.sh status
 
 # Detailed check for instance 1
-curl http://localhost:5000/instance/status
+curl http://localhost:35000/instance/status
 
 # Check logs
 docker logs session-manager-1
@@ -228,7 +228,7 @@ docker logs session-manager-2
 ### Access Dozzle (Log Viewer)
 
 Each instance has its own Dozzle:
-- Instance 1: http://localhost:10000
+- Instance 1: http://localhost:40000
 - Instance 2: http://localhost:10001
 - Instance 3: http://localhost:10002
 
