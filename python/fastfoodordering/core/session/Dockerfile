@@ -18,4 +18,8 @@ COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
+
 CMD [ "uv", "run", "core/session/serve.py" ]
+
+# WORKDIR /app/core/session
+# CMD uv run uvicorn serve:app --host 0.0.0.0 --port 8080 --workers 1

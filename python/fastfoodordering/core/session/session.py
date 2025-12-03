@@ -468,6 +468,9 @@ class SessionManager:
 
                     while True:
                         try:
+                            # Ask for the screenshot with a ping
+                            await websocket.send("ping", text=True)
+                            # Wait for the screenshot response
                             response = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                             if not response:
                                 frame_bytes = placeholder_frame_bytes
@@ -489,7 +492,7 @@ class SessionManager:
                             BACKEND_LOGGER.warning(f"[Session {session_id}] WebSocket closed, reconnecting to {session_url}")
                             break
 
-                        await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.1")))
+                        # await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.1")))
 
             except Exception as e:
                 retry_count += 1

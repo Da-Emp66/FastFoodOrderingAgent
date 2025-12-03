@@ -4,7 +4,7 @@ services:
     container_name: web-agent
     build:
       context: .
-      dockerfile: core/web/Dockerfile
+      dockerfile: core/web/Dockerfile # .gpu
     env_file:
       - ../../.env
     ports:

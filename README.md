@@ -13,7 +13,7 @@ A prototype application enabling users to issue voice or text commands to create
     . scripts/build-docker.sh
     docker compose up -d
 
-Then go to http://localhost:10000/ to view application logs.
+Then go to http://localhost:40000/ to view application logs.
 
 ## Frontend Set-up
 

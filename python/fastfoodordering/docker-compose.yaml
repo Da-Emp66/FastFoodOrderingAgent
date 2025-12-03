@@ -7,7 +7,7 @@ services:
     env_file:
       - ../../.env
     environment:
-      - OPENAI_BASE_URL=http://host.docker.internal:${LLM_PORT:-8000}
+      - OPENAI_BASE_URL=http://llama-cpp-server:8080
       - DOCKER_HOST=unix:///var/run/docker.sock
       - BROWSER_VISIBILITY_MODE=default
       - DOCKER_NETWORK_NAME=${DOCKER_NETWORK_NAME:-fast-food}

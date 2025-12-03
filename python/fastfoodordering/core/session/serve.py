@@ -74,7 +74,7 @@ class BrowserTextInput(BaseModel):
     """Text to type into the currently focused element"""
 
 @app.post("/chat")
-def chat(prompt: SimplePrompt) -> SimpleResponse:
+async def chat(prompt: SimplePrompt) -> SimpleResponse:
     """Obtain a basic response from the LLM."""
     response = litellm.completion(
         os.getenv("MODEL"),
@@ -94,7 +94,7 @@ async def session_manager_chat(prompt: SessionManagerPrompt) -> SessionManagerCh
     return await shared.session_manager(prompt)
 
 @app.get("/{user}/sessions")
-def get_sessions(user: str) -> List[str]:
+async def get_sessions(user: str) -> List[str]:
     return list(shared.session_manager.sessions.get(user, {}).keys())
 
 @app.post("/{user}/sessions")
@@ -109,7 +109,7 @@ async def put_sessions(user: str, session_id: str, objective: SessionObjective) 
         return SessionId(session_id=(await shared.session_manager.update_session(user, session_id, objective.objective)))
 
 @app.get("/{user}/sessions/{session_id}/screenshot")
-def get_screenshot(user: str, session_id: str) -> BrowserBase64Screenshot:
+async def get_screenshot(user: str, session_id: str) -> BrowserBase64Screenshot:
     screenshot = shared.session_manager.screenshot(user, session_id)
     with tempfile.NamedTemporaryFile("wb+") as named_temporary_file:
         cv2.imwrite(named_temporary_file, screenshot)
@@ -119,7 +119,7 @@ def get_screenshot(user: str, session_id: str) -> BrowserBase64Screenshot:
     return BrowserBase64Screenshot(b64_encoded_image=f"data:image/png;base64,{base64.b64encode(file).decode('utf-8')}")
 
 @app.get("/{user}/sessions/{session_id}/screenshot/stream")
-def stream_screenshot(user: str, session_id: str): # -> Union[StreamingResponse, FileResponse]
+async def stream_screenshot(user: str, session_id: str): # -> Union[StreamingResponse, FileResponse]
     try:
         # Return a StreamingResponse that continuously streams frames
         return StreamingResponse(
@@ -223,16 +223,16 @@ def on_exit():
         print(f"Stopped and removed container {container_id}.")
     print("Exit sequence stopped all session containers.")
 
-def main(args):
-    atexit.register(on_exit)
-    lm = dspy.LM(
-        os.getenv("OPENAI_BASE_URL"),
-        api_base=os.getenv("MODEL_SERVER"),
-        api_key=os.getenv("OPENAI_API_KEY"),
-        model_type="chat",
-    )
-    dspy.settings.configure(lm=lm)
+atexit.register(on_exit)
+lm = dspy.LM(
+    os.getenv("OPENAI_BASE_URL"),
+    api_base=os.getenv("MODEL_SERVER"),
+    api_key=os.getenv("OPENAI_API_KEY"),
+    model_type="chat",
+)
+dspy.settings.configure(lm=lm)
 
+def main(args):
     uvicorn.run(
         app=app,
         host=args.host,

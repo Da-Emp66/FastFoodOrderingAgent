@@ -13,9 +13,9 @@ services:
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "${HTTP_PORT:-80}:80"       # HTTP (redirects to HTTPS)
-      - "${HTTPS_PORT:-443}:443"     # HTTPS - Main public access
-      - "${ADMIN_PORT:-8443}:8443"   # HTTPS - Admin panel (optional)
+      - "${HTTP_PORT:-30080}:80"       # HTTP (redirects to HTTPS)
+      - "${HTTPS_PORT:-30443}:443"     # HTTPS - Main public access
+      - "${ADMIN_PORT:-38443}:8443"   # HTTPS - Admin panel (optional)
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro

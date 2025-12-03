@@ -52,4 +52,9 @@ ENV QT_DEBUG_PLUGINS=1
 CMD bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & \
     sleep 1 && \
     uv run core/web/serve.py
-    
+
+# WORKDIR /app/core/web
+# # Start Xvfb in the background and run your command
+# CMD bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & \
+#     sleep 1 && \
+#     uv run uvicorn serve:app --host 0.0.0.0 --port 9000 --workers 1

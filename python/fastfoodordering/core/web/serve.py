@@ -44,6 +44,9 @@ async def stream_browser(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
+            # Wait for the session manager to send a ping asking for the screenshot
+            await websocket.receive_text()
+            # Acquire and send the screenshot
             image_path = (
                 shared.CURRENT_SCREENSHOT_PATH
                 if os.path.exists(shared.CURRENT_SCREENSHOT_PATH)
@@ -52,7 +55,7 @@ async def stream_browser(websocket: WebSocket):
             success, jpeg = cv2.imencode(".jpeg", cv2.imread(image_path))
             if success:
                 await websocket.send_bytes(jpeg.tobytes())
-            await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.03")))
+            # await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.03")))
     except WebSocketDisconnect:
         print("Client disconnected.")
     except Exception as e:
@@ -61,14 +64,14 @@ async def stream_browser(websocket: WebSocket):
         print("WebSocket closed.")
 
 @app.get("/active-session/status")
-def get_status():
+async def get_status():
     return SessionCompletionStatus(
         status=shared.this_session.status.state,
         items_ordered=shared.this_session.status.items_ordered,
     )
 
 @app.put("/active-session")
-def update_overall_goal(session: Session):
+async def update_overall_goal(session: Session):
     assert session.user == shared.this_session.original_spec.user
     assert session.session_id == shared.this_session.original_spec.session_id
     shared.this_session.current_spec.objective_spec.objective = session.objective_spec.objective
@@ -159,28 +162,28 @@ async def handle_type(text_input: BrowserTextInput):
         print(f"Error handling text input: {e}")
         return Response(status_code=500, content=str(e))
 
+print(f"Using MODEL=`{os.getenv('MODEL')}`", flush=True)
+print(f"Using OPENAI_BASE_URL=`{os.getenv('OPENAI_BASE_URL')}`", flush=True)
+print(f"Using OPENAI_API_KEY=`{os.getenv('OPENAI_API_KEY')}`", flush=True)
+lm = dspy.LM(
+    os.getenv('MODEL'),
+    api_base=os.getenv("OPENAI_BASE_URL"),
+    api_key=os.getenv("OPENAI_API_KEY"),
+    model_type="chat",
+)
+dspy.settings.configure(lm=lm)
+# asyncio.run(shared.this_session())
+
 def main(args):
-    print(f"Using MODEL=`{os.getenv('MODEL')}`", flush=True)
-    print(f"Using OPENAI_BASE_URL=`{os.getenv('OPENAI_BASE_URL')}`", flush=True)
-    print(f"Using OPENAI_API_KEY=`{os.getenv('OPENAI_API_KEY')}`", flush=True)
-
-    lm = dspy.LM(
-        os.getenv('MODEL'),
-        api_base=os.getenv("OPENAI_BASE_URL"),
-        api_key=os.getenv("OPENAI_API_KEY"),
-        model_type="chat",
-    )
-    dspy.settings.configure(lm=lm)
-
     print(f"🚀 Starting WebSocket server on {args.host}:{args.port}", flush=True)
     main_loop = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": args.host, "port": args.port})
     main_loop.start()
     
-    # Give the WebSocket server time to start up
-    startup_delay = float(os.getenv("WEBSOCKET_STARTUP_DELAY", "2.0"))
-    print(f"⏳ Waiting {startup_delay}s for WebSocket server to initialize...", flush=True)
-    time.sleep(startup_delay)
-    print(f"✅ WebSocket server ready at ws://{args.host}:{args.port}/active-session/view", flush=True)
+    # # Give the WebSocket server time to start up
+    # startup_delay = float(os.getenv("WEBSOCKET_STARTUP_DELAY", "2.0"))
+    # print(f"⏳ Waiting {startup_delay}s for WebSocket server to initialize...", flush=True)
+    # time.sleep(startup_delay)
+    # print(f"✅ WebSocket server ready at ws://{args.host}:{args.port}/active-session/view", flush=True)
     
     asyncio.run(shared.this_session())
 

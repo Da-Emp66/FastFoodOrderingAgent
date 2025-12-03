@@ -21,15 +21,16 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # Calculate ports based on instance number
-# Base ports: Instance 1 uses 443, 8000, 5000, 10000
+# Base ports: Instance 1 uses 30443, 38000, 35000, 40000 (high ports to avoid ISP blocking)
 # Each instance increments by 1
-HTTPS_PORT=$((442 + INSTANCE_NUM))
-HTTP_PORT=$((79 + INSTANCE_NUM))
-ADMIN_PORT=$((8442 + INSTANCE_NUM))
-LLM_PORT=$((7999 + INSTANCE_NUM))
-SESSION_PORT=$((4999 + INSTANCE_NUM))
-DOZZLE_PORT=$((9999 + INSTANCE_NUM))
-UI_PORT=$((3000 + INSTANCE_NUM))
+HTTPS_PORT=$((30442 + INSTANCE_NUM))
+HTTP_PORT=$((30079 + INSTANCE_NUM))
+ADMIN_PORT=$((38442 + INSTANCE_NUM))
+LLM_PORT=$((37999 + INSTANCE_NUM))
+SESSION_PORT=$((34999 + INSTANCE_NUM))
+DOZZLE_PORT=$((39999 + INSTANCE_NUM))
+UI_PORT=$((33000 + INSTANCE_NUM))
+PARSER_PORT=$((38054 + INSTANCE_NUM))
 
 echo "Creating $ENV_FILE with the following configuration:"
 echo "  HTTP Port:    $HTTP_PORT"
@@ -39,6 +40,7 @@ echo "  LLM Port:     $LLM_PORT"
 echo "  Session Port: $SESSION_PORT"
 echo "  Dozzle Port:  $DOZZLE_PORT"
 echo "  UI Port:      $UI_PORT"
+echo "  Parser Port:  $PARSER_PORT"
 echo ""
 
 cat > "$ENV_FILE" << EOF
@@ -56,6 +58,12 @@ LLM_PORT=${LLM_PORT}
 SESSION_PORT=${SESSION_PORT}
 DOZZLE_PORT=${DOZZLE_PORT}
 UI_PORT=${UI_PORT}
+PARSER_PORT=${PARSER_PORT}
+
+# Parser Configuration
+PARSER_MODE=enabled
+PARSER_DEVICE=cpu
+PARSER_HOST=fastfood-browserimageparser-${INSTANCE_NUM}
 
 # LLM Configuration (same for all instances, or customize per instance)
 LLM_DEVICE_TYPE=cpu
@@ -69,6 +77,9 @@ WEB_AGENT_TAG=latest
 
 # Optional: Customize system prompt per instance
 # SYSTEM_PROMPT="You are Instance ${INSTANCE_NUM}'s assistant..."
+
+# Backend URL for UI
+VITE_BACKEND_URL=http://localhost:${SESSION_PORT}
 EOF
 
 echo "✓ Created $ENV_FILE"
