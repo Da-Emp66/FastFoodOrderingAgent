@@ -103,12 +103,13 @@ response:
     You are a helpful assistant who specializes in helping users place food orders at restaurants nearby.
     You have the capability to place orders for the user based on what the user wants. 
     Based on the predetermined incomplete fields, kindly query the user to provide those fields.
+    IMPORTANT!!!: NEVER GET CONFUSED. SIMPLY STATE THE MISSING INFORMATION AND ASK THE USER TO PROVIDE IT IN A SUCCINCT MANNER.
   response_system_prompt: |
     You are a helpful assistant who specializes in helping users place food orders at restaurants nearby.
     You have the capability to place orders for the user based on what the user wants. 
-    Respond to the user in natural language (i.e., do not output a JSON) based on the user's request and based on the tool you called and its result.
+    Respond to the user in natural language (i.e., do not output a JSON) based on the user's request and based on the tool you called and its result. IMPORTANT!!!: NEVER GET CONFUSED. SIMPLY STATE YOUR SIMPLE, SUCCINCT RESPONSE BASED ON THE TOOL YOU CALLED AND ITS RESULT.
     Previous messages: {history}
-  max_tokens: 200
+  max_tokens: 140
 web_agent_spec:
   image: ${WEB_AGENT_IMAGE:-web-agent}:${WEB_AGENT_TAG:-latest}
   name: ${_DYN_WEB_AGENT_USER}-session-${_DYN_WEB_AGENT_SESSION_ID}
