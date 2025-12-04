@@ -223,26 +223,26 @@ def on_exit():
         print(f"Stopped and removed container {container_id}.")
     print("Exit sequence stopped all session containers.")
 
-def main(args):
-    atexit.register(on_exit)
-    lm = dspy.LM(
-        os.getenv("OPENAI_BASE_URL"),
-        api_base=os.getenv("MODEL_SERVER"),
-        api_key=os.getenv("OPENAI_API_KEY"),
-        model_type="chat",
-    )
-    dspy.settings.configure(lm=lm)
+atexit.register(on_exit)
+lm = dspy.LM(
+    os.getenv("OPENAI_BASE_URL"),
+    api_base=os.getenv("MODEL_SERVER"),
+    api_key=os.getenv("OPENAI_API_KEY"),
+    model_type="chat",
+)
+dspy.settings.configure(lm=lm)
 
-    uvicorn.run(
-        app=app,
-        host=args.host,
-        port=args.port,
-        workers=1,
-    )
+# def main(args):
+#     uvicorn.run(
+#         app=app,
+#         host=args.host,
+#         port=args.port,
+#         workers=1,
+#     )
     
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8080)
-    args = parser.parse_args()
-    main(args)
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--host", type=str, default="0.0.0.0")
+#     parser.add_argument("--port", type=int, default=8080)
+#     args = parser.parse_args()
+#     main(args)

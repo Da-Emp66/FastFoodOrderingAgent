@@ -18,4 +18,8 @@ COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
-CMD [ "uv", "run", "core/session/serve.py" ]
+
+# CMD [ "uv", "run", "core/session/serve.py" ]
+
+WORKDIR /app/core/session
+CMD uv run gunicorn "serve:app" --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8080 --threads 8 --log-level debug --timeout 120

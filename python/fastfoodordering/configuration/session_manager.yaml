@@ -2,11 +2,11 @@ tool_mode: constrained
 tools:
   custom_tools:
     - function_name: start_ordering_session
-      import_spec: core/session/session_tools.py
+      import_spec: session_tools.py
     - function_name: update_ordering_session
-      import_spec: core/session/session_tools.py
+      import_spec: session_tools.py
     - function_name: cancel_ordering_session
-      import_spec: core/session/session_tools.py
+      import_spec: session_tools.py
     - function_name: null
   tool_system_prompt: |
     You are a helpful assistant who specializes in helping users manage food orders.
@@ -112,7 +112,8 @@ response:
 web_agent_spec:
   image: ${WEB_AGENT_IMAGE:-web-agent}:${WEB_AGENT_TAG:-latest}
   name: ${_DYN_WEB_AGENT_USER}-session-${_DYN_WEB_AGENT_SESSION_ID}
-  # command: ${WEB_AGENT_COMMAND:-bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & sleep 1 && uv run core/web/serve.py}
+  shm_size: "1gb"
+  runtime: nvidia
   volumes:
     - "/home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}"
 

@@ -39,7 +39,9 @@ elif "base" in _filtered_browser_agent_type and "gpt" in _filtered_browser_agent
 
     WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-simple-import.yaml")
     print("Using BROWSER_AGENT_TYPE base = Instantiating BrowserAgentSystem")
+    # os.environ["SCREENSHOT_STRATEGY"] = "externalrepeated"
     browser_agent = BrowserAgentSystem(WEB_AGENT_CONFIG_PATH)
+    # browser_agent.configuration.screenshot_call_configuration.strategy = "externalrepeated"
     print("BrowserAgentSystem instantiated!")
 elif "base" in _filtered_browser_agent_type or "minicpm" in _filtered_browser_agent_type:
     WEB_AGENT_CONFIG_PATH = str(Path(__file__).parent.parent.parent / "configuration" / "dspy-planner-constrained-tools-simple-import.yaml")

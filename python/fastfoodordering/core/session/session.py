@@ -12,6 +12,7 @@ import uuid
 import cv2
 import litellm
 from pydantic import BaseModel, Field
+import requests
 import websockets
 import yaml
 
@@ -22,6 +23,7 @@ from core.utils import (
     DSPyToolCaller,
     extract_final_message_content,
     from_config,
+    get_litellm_non_blank_content,
     populate_environment_specifications,
     remove_special_characters,
 )
@@ -185,7 +187,7 @@ class SessionManager:
         # Describe what the user wants and how it relates to
         # starting, updating, or canceling an order
         if self.configuration.plan.enabled:
-            plan = litellm.completion(
+            plan = get_litellm_non_blank_content(litellm.completion(
                 os.getenv("MODEL"),
                 messages=[
                     {
@@ -202,7 +204,7 @@ class SessionManager:
                 base_url=os.getenv("OPENAI_BASE_URL"),
                 max_tokens=self.configuration.response.max_tokens,
                 temperature=0.3,
-            ).choices[0].message.content
+            ))
 
         # Determine the tool
         result = None
@@ -258,7 +260,7 @@ class SessionManager:
                     )
                     if type(restaurant_location_options) == list and len(restaurant_location_options) > 0:
                         # Query the user with these locations as options
-                        response_incomplete_restaurant_location = litellm.completion(
+                        response_incomplete_restaurant_location = get_litellm_non_blank_content(litellm.completion(
                             os.getenv("MODEL"),
                             messages=[
                                 {
@@ -277,7 +279,7 @@ class SessionManager:
                             base_url=os.getenv("OPENAI_BASE_URL"),
                             max_tokens=self.configuration.response.max_tokens,
                             temperature=0.14,
-                        ).choices[0].message.content
+                        ))
 
                         if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
                         self.order_chat_history[prompt.user][ui_id] = self.order_chat_history[prompt.user].get(ui_id, []) + [
@@ -293,7 +295,7 @@ class SessionManager:
                 if len(incomplete_fields) > 0:
                     print(f"Current known fields: {current_known_order_details.model_dump_json(indent=2)}")
                     print(f"Fields identified as incomplete: {incomplete_fields}")
-                    response_incomplete_fields = litellm.completion(
+                    response_incomplete_fields = get_litellm_non_blank_content(litellm.completion(
                         os.getenv("MODEL"),
                         messages=[
                             {"content": self.configuration.response.response_incomplete_fields_system_prompt, "role": "system"},
@@ -303,7 +305,7 @@ class SessionManager:
                         base_url=os.getenv("OPENAI_BASE_URL"),
                         max_tokens=self.configuration.response.max_tokens,
                         temperature=0.2,
-                    ).choices[0].message.content
+                    ))
 
                     if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
                     self.order_chat_history[prompt.user][ui_id] = self.order_chat_history[prompt.user].get(ui_id, []) + [
@@ -362,7 +364,7 @@ class SessionManager:
             user_prompt_for_final_response = f"User's prompt was: '{prompt.prompt}'\nYou did not call a tool, so simply respond according to the user's prompt.\n"
 
         print(f"User prompt for final response: {user_prompt_for_final_response}")
-        response = litellm.completion(
+        response = get_litellm_non_blank_content(litellm.completion(
             os.getenv("MODEL"),
             messages=[
                 {
@@ -375,7 +377,7 @@ class SessionManager:
             base_url=os.getenv("OPENAI_BASE_URL"),
             max_tokens=self.configuration.response.max_tokens,
             temperature=0.25,
-        ).choices[0].message.content
+        ))
         
         if self.order_chat_history.get(prompt.user, None) is None: self.order_chat_history[prompt.user] = {}
         self.order_chat_history[prompt.user][ui_id] = self.order_chat_history[prompt.user].get(ui_id, []) + [
@@ -444,7 +446,7 @@ class SessionManager:
             _DYN_WEB_AGENT_USER=user_without_special_characters,
             _DYN_WEB_AGENT_SESSION_ID=session_id,
         )
-        session_url = f"ws://{container_spec['name']}:9000/active-session/view" # TODO: Don't hardcode this port
+        session_url = f"http://{container_spec['name']}:9000/active-session/view" # TODO: Don't hardcode this port
         retry_count = 0
         max_retries = int(os.getenv("BROWSER_SCREENSHOT_MAX_RETRIES", "-1"))  # -1 means infinite
         
@@ -462,34 +464,43 @@ class SessionManager:
             try:
                 BACKEND_LOGGER.info(f"[Session {session_id}] Attempting WebSocket connection (attempt #{retry_count + 1})...")
                 BACKEND_LOGGER.info(f"Websocket connection is `{session_url}`")
-                async with websockets.connect(session_url, open_timeout=10.0) as websocket:
-                    BACKEND_LOGGER.info(f"[Session {session_id}] ✅ Successfully connected to {session_url}")
-                    retry_count = 0  # Reset retry count on successful connection
+                # async with websockets.connect(session_url, open_timeout=10.0) as websocket:
+                    # BACKEND_LOGGER.info(f"[Session {session_id}] ✅ Successfully connected to {session_url}")
+                retry_count = 0  # Reset retry count on successful connection
 
-                    while True:
-                        try:
-                            response = await asyncio.wait_for(websocket.recv(), timeout=30.0)
-                            if not response:
-                                frame_bytes = placeholder_frame_bytes
-                            else:
-                                frame_bytes = response
+                while True:
+                    try:
+                        # Wait for the screenshot response
+                        print("Querying screenshot...", flush=True)
+                        req = requests.get(session_url)
+                        if req.status_code == 200:
+                            response = req.content
+                            print("Got response from screenshots!", flush=True)
+                        else:
+                            response = None
+                            print(f"Got err from screenshots: {req.status_code}: {req.text}", flush=True)
+                            
+                        if not response:
+                            frame_bytes = placeholder_frame_bytes
+                        else:
+                            frame_bytes = response
 
-                            yield (
-                                b"--frame\r\n"
-                                b"Content-Type: image/jpeg\r\n\r\n" +
-                                frame_bytes +
-                                b"\r\n"
-                            )
+                        yield (
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n\r\n" +
+                            frame_bytes +
+                            b"\r\n"
+                        )
 
-                        except asyncio.TimeoutError:
-                            BACKEND_LOGGER.warning(f"[Session {session_id}] Timeout waiting for frame from {session_url}, reconnecting...")
-                            break  # reconnect
+                    except asyncio.TimeoutError:
+                        BACKEND_LOGGER.warning(f"[Session {session_id}] Timeout waiting for frame from {session_url}, reconnecting...")
+                        break  # reconnect
 
-                        except websockets.ConnectionClosed:
-                            BACKEND_LOGGER.warning(f"[Session {session_id}] WebSocket closed, reconnecting to {session_url}")
-                            break
+                    except websockets.ConnectionClosed:
+                        BACKEND_LOGGER.warning(f"[Session {session_id}] WebSocket closed, reconnecting to {session_url}")
+                        break
 
-                        await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.1")))
+                    # await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.1")))
 
             except Exception as e:
                 retry_count += 1

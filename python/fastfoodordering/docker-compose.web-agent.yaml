@@ -10,11 +10,25 @@ services:
     ports:
       - 9000:9000
     environment:
+      - BROWSER_AGENT_TYPE=browseruse
       - SESSION_USER=testuser
       - SESSION_ID=test_id
       - SESSION_OBJECTIVE='Go to burger king and order a burger'
       - OPENAI_BASE_URL=http://host.docker.internal:8000
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: always
-    
+    shm_size: "1gb"
+    # volumes:
+    #   - /tmp/.X11-unix:/tmp/.X11-unix
+    #   - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu,graphics,compute,utility]

@@ -17,6 +17,7 @@ import traceback
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 import warnings
 import cv2
+import litellm
 import numpy as np
 import typing_extensions
 from box import Box
@@ -698,3 +699,7 @@ def IoU(boxA: List[float], boxB: List[float]):
     # Compute union
     union = areaA + areaB - intersection
     return intersection / union
+
+
+def get_litellm_non_blank_content(response: litellm.ModelResponse):
+    return (response.choices[0].message.content or response.choices[0].message.reasoning_content)

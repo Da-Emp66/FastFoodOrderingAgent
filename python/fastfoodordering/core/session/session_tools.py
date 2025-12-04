@@ -4,6 +4,8 @@ from uuid import uuid4
 
 import requests
 import yaml
+from distutils.util import strtobool
+from docker.types import DeviceRequest
 import shared
 from core.session.session import BrowserGeoLocation, ObjectiveSpecification, OrderDetails, Session, SessionManagerToolCallResult
 from core.utils import populate_environment_specifications, remove_special_characters
@@ -55,6 +57,7 @@ async def start_ordering_session(
     print(shared.docker_client.networks.list())
     network = shared.docker_client.networks.get(os.getenv("DOCKER_NETWORK_NAME", "fast-food"))
     print(network)
+    device_requests = None if not strtobool(os.getenv("WEB_AGENT_USE_GPU", "False").lower()) else [DeviceRequest(count=-1, capabilities=[['gpu']])]
     container = shared.docker_client.containers.run(
         **web_agent_environment_spec,
         network=network.name,
@@ -62,6 +65,7 @@ async def start_ordering_session(
         restart_policy={"Name": "always"},
         environment=container_environment_vars,
         detach=True,
+        device_requests=device_requests,
     )
     shared.session_ids_to_containers[session_id] = container
     print(shared.session_ids_to_containers)

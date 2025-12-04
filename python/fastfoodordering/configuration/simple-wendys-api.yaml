@@ -2,27 +2,27 @@ tool_mode: constrained
 tools:
   custom_tools:
     - function_name: screenshot
-      import_spec: core/web/toolserver_wendys_api.py
+      import_spec: toolserver_wendys_api.py
     - function_name: navigate
-      import_spec: core/web/toolserver_wendys_api.py
+      import_spec: toolserver_wendys_api.py
     - function_name: scroll
-      import_spec: core/web/toolserver.py
+      import_spec: toolserver.py
     - function_name: click_element_by_box_label_number
-      import_spec: core/web/toolserver_wendys_api.py
+      import_spec: toolserver_wendys_api.py
     - function_name: type_text_by_box_label_number
-      import_spec: core/web/toolserver_wendys_api.py
+      import_spec: toolserver_wendys_api.py
     
     - function_name: click_relative_coordinates
-      import_spec: core/web/toolserver_wendys_api.py
+      import_spec: toolserver_wendys_api.py
     - function_name: type_text_character_by_character
-      import_spec: core/web/toolserver_wendys_api.py
+      import_spec: toolserver_wendys_api.py
 
     - function_name: order_wendys_tool
-      import_spec: core/web/toolserver_wendys_api.py
+      import_spec: toolserver_wendys_api.py
   import_hooks:
     - spec:
         function_name: init_globals
-        import_spec: core/web/toolserver_wendys_api.py
+        import_spec: toolserver_wendys_api.py
       args: []
       kwargs: {}
   browser_visibility:

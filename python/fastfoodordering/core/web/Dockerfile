@@ -48,8 +48,14 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV DISPLAY=:99
 ENV QT_DEBUG_PLUGINS=1
 
+# # Start Xvfb in the background and run your command
+# CMD bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & \
+#     sleep 1 && \
+#     uv run core/web/serve.py
+
+WORKDIR /app/core/web
 # Start Xvfb in the background and run your command
 CMD bash -c "Xvfb $DISPLAY -ac -screen 0 1024x768x16" & \
     sleep 1 && \
-    uv run core/web/serve.py
-    
+    uv run gunicorn "serve:app" --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:9000 --threads 8
+# uvicorn serve:app --host 0.0.0.0 --port 9000 --workers 1

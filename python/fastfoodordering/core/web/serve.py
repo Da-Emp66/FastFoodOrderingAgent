@@ -8,10 +8,11 @@ from dotenv import find_dotenv, load_dotenv
 import dspy
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 
-from core.utils import GeneratedTool, GeneratedToolSpec
+from core.utils import GeneratedTool, GeneratedToolSpec, remove_special_characters
 from core.session.session import Session, SessionCompletionStatus
 
 # Load environment variables
@@ -39,11 +40,10 @@ class BrowserTextInput(BaseModel):
     text: str
     """Text to type into the currently focused element"""
 
-@app.websocket("/active-session/view")
-async def stream_browser(websocket: WebSocket):
-    await websocket.accept()
+async def browser_streamer():
     try:
         while True:
+            # Acquire and send the screenshot
             image_path = (
                 shared.CURRENT_SCREENSHOT_PATH
                 if os.path.exists(shared.CURRENT_SCREENSHOT_PATH)
@@ -51,14 +51,23 @@ async def stream_browser(websocket: WebSocket):
             )
             success, jpeg = cv2.imencode(".jpeg", cv2.imread(image_path))
             if success:
-                await websocket.send_bytes(jpeg.tobytes())
-            await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.03")))
+                yield jpeg.tobytes()
+            else:
+                yield b""
+            # await asyncio.sleep(float(os.getenv("BROWSER_SCREENSHOT_WEBSOCKET_DELAY", "0.03")))
     except WebSocketDisconnect:
         print("Client disconnected.")
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
         print("WebSocket closed.")
+
+@app.get("/active-session/view", response_class=StreamingResponse)
+async def stream_browser():
+    return StreamingResponse(
+        browser_streamer(),
+        media_type="image/jpeg"
+    )
 
 @app.get("/active-session/status")
 def get_status():
@@ -159,34 +168,39 @@ async def handle_type(text_input: BrowserTextInput):
         print(f"Error handling text input: {e}")
         return Response(status_code=500, content=str(e))
 
-def main(args):
-    print(f"Using MODEL=`{os.getenv('MODEL')}`", flush=True)
-    print(f"Using OPENAI_BASE_URL=`{os.getenv('OPENAI_BASE_URL')}`", flush=True)
-    print(f"Using OPENAI_API_KEY=`{os.getenv('OPENAI_API_KEY')}`", flush=True)
+print(f"Using MODEL=`{os.getenv('MODEL')}`", flush=True)
+print(f"Using OPENAI_BASE_URL=`{os.getenv('OPENAI_BASE_URL')}`", flush=True)
+print(f"Using OPENAI_API_KEY=`{os.getenv('OPENAI_API_KEY')}`", flush=True)
+lm = dspy.LM(
+    os.getenv('MODEL'),
+    api_base=os.getenv("OPENAI_BASE_URL"),
+    api_key=os.getenv("OPENAI_API_KEY"),
+    model_type="chat",
+)
+dspy.settings.configure(lm=lm)
 
-    lm = dspy.LM(
-        os.getenv('MODEL'),
-        api_base=os.getenv("OPENAI_BASE_URL"),
-        api_key=os.getenv("OPENAI_API_KEY"),
-        model_type="chat",
-    )
-    dspy.settings.configure(lm=lm)
-
-    print(f"🚀 Starting WebSocket server on {args.host}:{args.port}", flush=True)
-    main_loop = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": args.host, "port": args.port})
-    main_loop.start()
-    
-    # Give the WebSocket server time to start up
-    startup_delay = float(os.getenv("WEBSOCKET_STARTUP_DELAY", "2.0"))
-    print(f"⏳ Waiting {startup_delay}s for WebSocket server to initialize...", flush=True)
-    time.sleep(startup_delay)
-    print(f"✅ WebSocket server ready at ws://{args.host}:{args.port}/active-session/view", flush=True)
-    
+def initialize_this_session():
     asyncio.run(shared.this_session())
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=9000)
-    args = parser.parse_args()
-    main(args)
+thread = threading.Thread(target=initialize_this_session)
+thread.start()
+
+# def main(args):
+#     print(f"🚀 Starting WebSocket server on {args.host}:{args.port}", flush=True)
+#     main_loop = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": args.host, "port": args.port})
+#     main_loop.start()
+    
+#     # # Give the WebSocket server time to start up
+#     # startup_delay = float(os.getenv("WEBSOCKET_STARTUP_DELAY", "2.0"))
+#     # print(f"⏳ Waiting {startup_delay}s for WebSocket server to initialize...", flush=True)
+#     # time.sleep(startup_delay)
+#     # print(f"✅ WebSocket server ready at ws://{args.host}:{args.port}/active-session/view", flush=True)
+    
+#     asyncio.run(shared.this_session())
+
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--host", type=str, default="0.0.0.0")
+#     parser.add_argument("--port", type=int, default=9000)
+#     args = parser.parse_args()
+#     main(args)
