@@ -209,7 +209,7 @@ class SessionManager:
         # Determine the tool
         result = None
         try:
-            print(f"Plan: {plan}")
+            print(f"Plan: {plan}", flush=True)
             generated_tool = await self.tool_caller.determine_tool(
                 user=prompt.user,
                 prompt=prompt.prompt,
@@ -222,7 +222,7 @@ class SessionManager:
         except Exception as e:
             generated_tool = None
             result = f"Failed to determine tool: {e}"
-            print(result)
+            print(result, flush=True)
 
         session_id = None
         user_prompt_for_final_response = ""
@@ -249,7 +249,7 @@ class SessionManager:
                     force_current_order_detail_preservation=self.configuration.extraction.force_current_order_detail_preservation,
                 )
                 self.order_details[prompt.user][ui_id] = current_known_order_details
-                print(f"Updating extracted order details for user {prompt.user} to: {json.dumps(current_known_order_details, indent=2, cls=BaseModelJSONEncoder)}")
+                print(f"Updating extracted order details for user {prompt.user} to: {json.dumps(current_known_order_details, indent=2, cls=BaseModelJSONEncoder)}", flush=True)
                 if prompt.current_geolocation is not None \
                     and current_known_order_details.restaurant_or_food_chain_name is not None \
                     and current_known_order_details.restaurant_address is None:
@@ -293,8 +293,8 @@ class SessionManager:
                 self.order_details[prompt.user][ui_id] = current_known_order_details
                 incomplete_fields = current_known_order_details.incomplete_fields()
                 if len(incomplete_fields) > 0:
-                    print(f"Current known fields: {current_known_order_details.model_dump_json(indent=2)}")
-                    print(f"Fields identified as incomplete: {incomplete_fields}")
+                    print(f"Current known fields: {current_known_order_details.model_dump_json(indent=2)}", flush=True)
+                    print(f"Fields identified as incomplete: {incomplete_fields}", flush=True)
                     response_incomplete_fields = get_litellm_non_blank_content(litellm.completion(
                         os.getenv("MODEL"),
                         messages=[
@@ -317,7 +317,7 @@ class SessionManager:
                     )
 
             if generated_tool.spec.tool == "start_ordering_session":
-                print("Starting session...")
+                print("Starting session...", flush=True)
                 result = await start_ordering_session(
                     exact_user_query=f"Order the food from the website of the restaurant or food chain desired. The details are as follows:\n{json.dumps(current_known_order_details, indent=2, cls=BaseModelJSONEncoder)}",
                     user=prompt.user,
@@ -325,9 +325,9 @@ class SessionManager:
                     session_mode=prompt.ordering_mode,
                     order_details=current_known_order_details,
                 )
-                print("Started session!")
+                print("Started session!", flush=True)
             elif generated_tool.spec.tool == "update_ordering_session":
-                print("Updating session...")
+                print("Updating session...", flush=True)
                 result = await update_ordering_session(
                     user=prompt.user,
                     session_id=prompt.session_id,
@@ -336,16 +336,16 @@ class SessionManager:
                         extracted_order_details=current_known_order_details,
                     )
                 )
-                print("Updated session!")
+                print("Updated session!", flush=True)
             elif generated_tool.spec.tool == "cancel_ordering_session":
-                print("Canceling session...")
+                print("Canceling session...", flush=True)
                 result = await cancel_ordering_session(
                     user=prompt.user,
                     session_id=prompt.session_id,
                 )
                 if self.order_details.get(prompt.user, None) is None: self.order_details[prompt.user] = {}
                 self.order_details[prompt.user][ui_id] = OrderDetails()
-                print("Canceled session!")
+                print("Canceled session!", flush=True)
             else:
                 result = "No function called."
             
@@ -354,16 +354,16 @@ class SessionManager:
                     session_id = json.loads(result).get("session_id", None)
                 except json.JSONDecodeError as e:
                     result = f"Failed to parse tool result as JSON {generated_tool.spec}: {e}"
-                    print(result)
+                    print(result, flush=True)
                 except Exception as e:
                     result = f"Failed to call tool {generated_tool.spec}: {e}"
-                    print(result)
+                    print(result, flush=True)
             
             user_prompt_for_final_response = f"User's prompt was: '{prompt.prompt}'\nYour tool call was: '{generated_tool.spec.model_dump_json(indent=2)}'\nThat tool's result was: '{result}'\n"
         else:
             user_prompt_for_final_response = f"User's prompt was: '{prompt.prompt}'\nYou did not call a tool, so simply respond according to the user's prompt.\n"
 
-        print(f"User prompt for final response: {user_prompt_for_final_response}")
+        print(f"User prompt for final response: {user_prompt_for_final_response}", flush=True)
         response = get_litellm_non_blank_content(litellm.completion(
             os.getenv("MODEL"),
             messages=[

@@ -424,8 +424,13 @@ class ConstrainedToolCaller(ToolCaller):
             self.configuration: ConstrainedToolCallerConfiguration = from_config(configuration, ConstrainedToolCallerConfiguration)
 
         self.tools = {}
+        desired_model = os.getenv("MODEL")
+        if desired_model.startswith("gpt-4o") or desired_model.startswith("o1-"):
+            model = desired_model
+        else:
+            model = "o1-" + desired_model
         self.lm = GuidanceOpenAI(
-            "o1-" + os.getenv("MODEL"),
+            model,
             echo=True,
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL"),
