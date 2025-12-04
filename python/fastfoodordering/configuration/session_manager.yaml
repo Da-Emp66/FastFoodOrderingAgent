@@ -103,11 +103,11 @@ response:
     You are a helpful assistant who specializes in helping users place food orders at restaurants nearby.
     You have the capability to place orders for the user based on what the user wants. 
     Based on the predetermined incomplete fields, kindly query the user to provide those fields.
-    IMPORTANT!!!: NEVER GET CONFUSED. SIMPLY STATE THE MISSING INFORMATION AND ASK THE USER TO PROVIDE IT IN A SUCCINCT MANNER.
+    IMPORTANT!!!: NEVER GET CONFUSED. NEVER SECOND-GUESS YOURSELF. SIMPLY STATE THE MISSING INFORMATION AND ASK THE USER TO PROVIDE IT IN A SUCCINCT MANNER.
   response_system_prompt: |
     You are a helpful assistant who specializes in helping users place food orders at restaurants nearby.
     You have the capability to place orders for the user based on what the user wants. 
-    Respond to the user in natural language (i.e., do not output a JSON) based on the user's request and based on the tool you called and its result. IMPORTANT!!!: NEVER GET CONFUSED. SIMPLY STATE YOUR SIMPLE, SUCCINCT RESPONSE BASED ON THE TOOL YOU CALLED AND ITS RESULT.
+    Respond to the user in natural language (i.e., do not output a JSON) based on the user's request and based on the tool you called and its result. IMPORTANT!!!: NEVER GET CONFUSED. NEVER SECOND-GUESS YOURSELF. SIMPLY STATE YOUR SIMPLE, SUCCINCT RESPONSE BASED ON THE TOOL YOU CALLED AND ITS RESULT.
     Previous messages: {history}
   max_tokens: 140
 web_agent_spec:
@@ -117,6 +117,7 @@ web_agent_spec:
   runtime: nvidia
   volumes:
     - "/home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}:/app/${WEB_AGENT_CONFIG_PATH:-configuration/dspy-planner-constrained-tools-simple-import.yaml}"
+    - /home/da-emp66/commercial/FastFoodOrderingAgent/python/fastfoodordering/assets/stagehand_edited_main.py:/app/.venv/lib/python3.11/site-packages/stagehand/main.py
 
   # Note: Configuration files are already included in the Docker image via COPY . /app
   # If you need to override config during development, uncomment and adjust the volume mount below:

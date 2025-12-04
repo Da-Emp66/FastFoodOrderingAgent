@@ -29,6 +29,13 @@ async def start_ordering_session(
         val = val.replace("localhost", "host.docker.internal")
         replacements[key] = val
     container_environment_vars.update(replacements)
+
+    if current_geolocation is None:
+        current_geolocation = BrowserGeoLocation(
+            latitude=28.5383,
+            longitude=-81.3792,
+            accuracy=100,
+        )
     
     container_environment_vars.update({
         "_DYN_WEB_AGENT_USER": user_without_special_characters,
